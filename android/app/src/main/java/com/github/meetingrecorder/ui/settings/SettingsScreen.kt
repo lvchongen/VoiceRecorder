@@ -53,6 +53,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.meetingrecorder.R
 import com.github.meetingrecorder.appViewModelFactory
 import com.github.meetingrecorder.data.Config
+import com.github.meetingrecorder.data.DenoiseModel
 import com.github.meetingrecorder.data.QwenModelStore
 import com.github.meetingrecorder.data.SummaryProvider
 import com.github.meetingrecorder.data.ThemeMode
@@ -134,6 +135,9 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
     var providerMenuExpanded by remember { mutableStateOf(false) }
     val apiKey by viewModel.apiKey.collectAsState()
     val model by viewModel.model.collectAsState()
+    val denoiseModel by viewModel.denoiseModel.collectAsState()
+    var denoiseModelDraft by rememberSaveable { mutableStateOf(denoiseModel) }
+    var denoiseModelExpanded by remember { mutableStateOf(false) }
     val recordingDenoise by viewModel.recordingDenoiseEnabled.collectAsState()
     var recordingDenoiseDraft by rememberSaveable { mutableStateOf(recordingDenoise) }
     val audioQuality by viewModel.audioQuality.collectAsState()
@@ -334,10 +338,31 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
         HorizontalDivider()
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("录音实时降噪（GTCRN）")
+                Text("录音实时降噪")
                 Text("同时保留原始录音和降噪录音", style = MaterialTheme.typography.bodySmall)
             }
             Switch(checked = recordingDenoiseDraft, onCheckedChange = { recordingDenoiseDraft = it })
+        }
+        if (recordingDenoiseDraft) {
+            ExposedDropdownMenuBox(expanded = denoiseModelExpanded, onExpandedChange = { denoiseModelExpanded = it }) {
+                OutlinedTextField(
+                    value = denoiseModelDraft.label,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("降噪方案") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(denoiseModelExpanded) },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                )
+                ExposedDropdownMenu(expanded = denoiseModelExpanded, onDismissRequest = { denoiseModelExpanded = false }) {
+                    DenoiseModel.entries.forEach { model ->
+                        DropdownMenuItem(text = { Text(model.label) }, onClick = {
+                            denoiseModelDraft = model
+                            denoiseModelExpanded = false
+                        })
+                    }
+                }
+            }
+            Text("DPDFNet8 在降噪时适度保留轻声和远处讲话。保存后对下一次录音生效。", style = MaterialTheme.typography.bodySmall)
         }
 
         Row(
@@ -380,6 +405,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
                 viewModel.setModel(modelDraft)
                 viewModel.setAudioQuality(audioQualityDraft)
                 viewModel.setRecordingDenoiseEnabled(recordingDenoiseDraft)
+                viewModel.setDenoiseModel(denoiseModelDraft)
                 viewModel.setDndDuringRecordingEnabled(dndDuringRecordingDraft)
             },
             modifier = Modifier.fillMaxWidth(),

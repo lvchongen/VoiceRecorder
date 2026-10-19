@@ -166,6 +166,12 @@ class Config(context: Context) {
             prefs.edit().putBoolean("processing_countdown_enabled", value).apply()
         }
 
+    var denoiseModel: DenoiseModel
+        get() = DenoiseModel.entries.find { it.name == prefs.getString("denoise_model", "DPDFNET8") } ?: DenoiseModel.DPDFNET8
+        set(value) {
+            prefs.edit().putString("denoise_model", value.name).apply()
+        }
+
     var recordingDenoiseEnabled: Boolean
         get() = prefs.getBoolean("recording_denoise_enabled", false)
         set(value) {

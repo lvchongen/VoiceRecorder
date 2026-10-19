@@ -31,6 +31,12 @@ class SettingsViewModel(private val config: Config, private val models: WhisperM
         modelStatus.value = "Qwen3-ASR 已删除"
     }
 
+    val denoiseModel = MutableStateFlow(config.denoiseModel)
+    fun setDenoiseModel(value: com.github.meetingrecorder.data.DenoiseModel) {
+        config.denoiseModel = value
+        denoiseModel.value = value
+    }
+
     val recordingDenoiseEnabled = MutableStateFlow(config.recordingDenoiseEnabled)
     fun setRecordingDenoiseEnabled(value: Boolean) {
         config.recordingDenoiseEnabled = value

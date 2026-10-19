@@ -80,7 +80,7 @@ class RecordingService : Service() {
             try {
                 val config = (application as MeetingRecorderApp).container.config
                 wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MeetingRecorder:Recording").apply { acquire() }
-                val file = audioRecorder.start(File(dirPath), bitrate, config.recordingDenoiseEnabled) {
+                val file = audioRecorder.start(File(dirPath), bitrate, config.recordingDenoiseEnabled, config.denoiseModel) {
                     // OS silenced the mic mid-recording — reflect it immediately in the shared status.
                     _status.value = _status.value.copy(silenced = true)
                 }
