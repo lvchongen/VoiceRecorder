@@ -36,9 +36,11 @@ class SpeakerViewModel(
     private var meetingDir: File? = null
     private var job: Job? = null
     private var player: MediaPlayer? = null
+    private var profileObserver: Job? = null
     fun load(path: String? = null) {
         if (_state.value.busy && meetingDir?.absolutePath == path && job?.isActive == true) return
         job?.cancel()
+        profileObserver?.cancel()
         stopSample()
         meetingDir = path?.let(::File)
         val dir = meetingDir
@@ -48,6 +50,12 @@ class SpeakerViewModel(
                 val meeting = withContext(ioDispatcher) { dir?.let(repository::readMeeting) }
                 val profiles = withContext(ioDispatcher) { repository.profiles() }
                 _state.value = SpeakerUiState(meeting, profiles, service.models.installed())
+                profileObserver = viewModelScope.launch {
+                    repository.profileChanges.collect {
+                        val latest = withContext(ioDispatcher) { repository.profiles() }
+                        _state.update { it.copy(profiles = latest, modelsReady = service.models.installed()) }
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

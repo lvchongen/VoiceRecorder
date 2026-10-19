@@ -1,6 +1,7 @@
 package com.github.meetingrecorder.speakers
 
 import com.github.meetingrecorder.data.atomicText
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -15,6 +16,9 @@ private data class MeetingSpeakerLink(val id: String)
 
 /** Biometrics and audition clips stay in app-private, backup-excluded storage. */
 class SpeakerRepository(private val root: File) {
+    private val _profileChanges = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val profileChanges = _profileChanges.asStateFlow()
+
     private fun identifier(id: String): String {
         require(id.matches(Regex("[a-zA-Z0-9-]{1,80}"))) { "无效的声纹标识" }
         return id
@@ -79,6 +83,7 @@ class SpeakerRepository(private val root: File) {
         val dir = profileDirectory(profile.id)
         check(dir.isDirectory || dir.mkdirs()) { "无法创建声纹档案" }
         atomicText(File(dir, "profile.json"), speakerJson.encodeToString(VoiceProfile.serializer(), profile.copy(name = name)))
+        _profileChanges.value += 1
     }
 
     /** Match conservatively; enroll clean unmatched voices without adding UI steps. */
@@ -172,5 +177,6 @@ class SpeakerRepository(private val root: File) {
     @Synchronized fun deleteProfile(id: String) {
         val dir = profileDirectory(id)
         check(!dir.exists() || dir.deleteRecursively()) { "声纹删除未完成，请重试" }
+        _profileChanges.value += 1
     }
 }
