@@ -285,7 +285,24 @@ Stopping a recording finalizes audio and meeting metadata, removes the recording
 
 `SummaryOptionsEditor` reuses Material 3 exposed dropdowns in Settings and the detail dialog. Preview and source evidence reuse the native Markdown viewer. Tests: SummaryOptionsTest, SummaryHistoryTest, SummaryPreviewTest, provider mock HTTP tests and Compose detail tests. ViewModel IO dispatcher is injectable for deterministic load/preview/adoption tests. No live-model factual quality or device inference claims follow from JVM success.
 
-Speaker embeddings and cross-meeting identity management are planned only; see README's voiceprint requirements. Do not represent existing Gemini speaker labels as verified voiceprints.
+The optional local speaker pipeline is documented below; existing Gemini-only speaker labels are not independent verified voiceprints.
 
 
-CI and Android release setup explicitly accept SDK/preview licenses and install the exact app NDK/CMake versions before Gradle configuration. Keep those versions aligned with app/build.gradle.kts. Speaker-profile planning includes multiple user-confirmed samples per person; official multi-enrollment support is not evidence of illness robustness without evaluation.
+CI and Android release setup explicitly accept SDK/preview licenses and install the exact app NDK/CMake versions before Gradle configuration. Keep those versions aligned with app/build.gradle.kts. Speaker profiles support multiple user-confirmed samples per person; official multi-enrollment support is not evidence of illness robustness without evaluation.
+
+
+## Android local speakers and voice profiles
+
+`speakers/` owns local diarization, embedding extraction, per-meeting A/B/C identities and optional confirmed cross-meeting profiles. `SpeakerModelStore` reuses the hash-checking downloader with pinned Pyannote INT8 segmentation and CAMPPlus zh/en embeddings (~28 MiB); downloads stay optional. AppContainer routes through SpeakerTranscriptionClient only when models are installed and Config.speakerSeparationEnabled is true; without models, legacy behavior remains. Ordinary audio saving does not analyze speakers. Detail-page explicit speaker transcription uses MeetingProcessor's injected speakerTranscriptionClient and still previews notes before adoption.
+
+`SpeakerService` decodes bounded chunks twice (analysis then turn ASR), never buffers an entire long recording. AudioChunk.startMilliseconds preserves fractional chunk offsets; legacy startSeconds consumers are unchanged. Native work is checked for cancellation before/after bounded windows and released before ASR. Overlapping detected turns become unassigned; short/quiet/clipped samples cannot enroll. Cross-window stitching uses heuristic cosine score 0.65 and candidate margin 0.08, not calibrated identity guarantees. A local cluster cannot consume a label already used by another cluster in the same window. Cache checks audio SHA, pipeline version and embedding model ID; changing model/stitching semantics requires changing PIPELINE_VERSION.
+
+`SpeakerRepository` stores embeddings/2–6-second clips in noBackupFilesDir, not public meeting folders. speakers.json holds only a private analysis ID. Each meeting has independent IDs and name snapshots; copying an extant meeting cannot share its private analysis. Lazy owner rebinding permits folder rename after the old path disappears. App-mediated meeting deletion removes private analysis clips via MeetingRepository.onMeetingDeleted, preserving independently copied voice-library clips. Profile operations are synchronized and atomic JSON writes retain generated IDs; copy failures leave prior profile metadata unchanged. No profile is created, associated or updated from a candidate score: user confirmation is required. Manual name-only saves never enroll. Profile rename/delete does not rewrite historical transcript/notes/name snapshots.
+
+UI: main saved state offers optional naming, detail has a Speakers tab, Settings has a Voiceprints tab. SpeakerViewModel handles IO, cancellation and sample player lifecycle. SpeakerMeetingPanel supports explicit naming, existing profile selection and selected sample enrollment; VoiceprintPanel supports rename, audition, sample removal and profile deletion. Keep these controls in existing Material 3 styling. Samples are bounded at 3 per meeting speaker and 20 per profile. Detection mistakes, noisy recordings and illness robustness are not resolved by these data structures.
+
+Tests: SpeakerDataTest, SpeakerRepositoryTest, SpeakerServiceTest, SpeakerControlsTest, millisecond chunk/route regressions, plus opt-in SpeakerDeviceTest using staged public two-speaker audio in isolated app cache. Do not substitute self-similarity or synthetic fixtures for real cross-person/illness accuracy evaluation. Never enable microphone device tests implicitly. Device installs must use adb install -r, preserving existing app data.
+
+### Android 模板提示词
+
+设置 → 提示词中选择会议类型，会显示该模板独立的中文摘要提示词；修改后点击保存，可恢复当前模板默认值。生成时按实际所选模板读取配置，会议内临时选择也生效。转写与标题提示词独立于摘要模板。全局补充要求默认留空，兼容保留旧版自定义摘要提示词；模板自定义按枚举名存储，留空使用内置默认。摘要版本记录该模板提示词与全局补充要求。测试覆盖模板切换、独立持久化、恢复默认和原文插值。

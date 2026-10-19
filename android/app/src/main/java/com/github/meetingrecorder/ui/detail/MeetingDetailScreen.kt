@@ -58,6 +58,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.meetingrecorder.R
 import com.github.meetingrecorder.appViewModelFactory
+import com.github.meetingrecorder.speakers.SpeakerMeetingPanel
 import java.text.DateFormat
 import java.util.Date
 
@@ -67,6 +68,7 @@ fun MeetingDetailScreen(
     meetingPath: String,
     onBack: () -> Unit,
     viewModel: MeetingDetailViewModel = viewModel(factory = appViewModelFactory),
+    initialSpeakerTab: Boolean = false,
 ) {
     LaunchedEffect(meetingPath) { viewModel.load(meetingPath) }
 
@@ -77,7 +79,7 @@ fun MeetingDetailScreen(
     val currentNotes = notes
     val currentTranscript = transcript
     val processing = genState is GenState.Processing
-    var selectedTab by rememberSaveable(meetingPath) { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable(meetingPath) { mutableIntStateOf(if (initialSpeakerTab) 2 else 0) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showOptions by remember(meetingPath) { mutableStateOf(false) }
     var showHistory by remember(meetingPath) { mutableStateOf(false) }
@@ -198,10 +200,18 @@ fun MeetingDetailScreen(
                     onClick = { selectedTab = 1 },
                     text = { Text(stringResource(R.string.label_transcript)) },
                 )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = {
+                        viewModel.stop()
+                        selectedTab = 2
+                    },
+                    text = { Text("说话人") },
+                )
                 if (hasAudio) {
                     Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
                         text = { Text(stringResource(R.string.label_audio)) },
                     )
                 }
@@ -237,7 +247,15 @@ fun MeetingDetailScreen(
                             showOptions = true
                         },
                     )
-                    2 -> AudioPlayer(viewModel)
+                    2 -> SpeakerMeetingPanel(
+                        meetingPath = meetingPath,
+                        transcriptionBusy = processing,
+                        onTranscribe = {
+                            selectedTab = 0
+                            viewModel.generateTranscriptAndNotes(withSpeakers = true)
+                        },
+                    )
+                    3 -> AudioPlayer(viewModel)
                 }
             }
         }

@@ -491,11 +491,40 @@ Transcripts are saved as soon as transcription completes, before requesting a su
 
 验证：模板/粒度组合、原文插值、引用范围、HTTP 参数、配置兼容、版本恢复、保存失败保护以及预览采用/丢弃/生成失败的 JVM 测试；Compose 测试覆盖原有任务进度和新选项/预览操作。离线测试不代表真实模型的内容质量、真机布局或长会议效果验证。
 
-### 声纹识别后续需求（尚未实现）
+### Android 本地分人与可选声纹
 
-会议内按首次发言编号 A、B、C；可显示经确认的姓名，例如 A · 张三。后续声纹库允许跨会议匹配，但会议内编号独立保留。只有质量合格、相似度及候选差距通过经真实录音校准的阈值才可自动关联，其他情况保留匿名或待确认。声纹管理需支持样本试听、命名、追加/移除样本、解除错误关联及删除档案；删除档案不删除录音或改写历史逐字稿。实施前需验证分人、重叠讲话、噪声/设备变化与误匹配率。当前 Gemini 标签不构成独立声纹识别，Whisper/Qwen/阿里链路也没有新增声纹能力。
+普通录音仍然直接保存。保存后可点 **识别并命名（可选）**；导入处理结果也提供 **保存并命名说话人**。入口打开本场会议的 **说话人** 页，不强制识别或建立声纹档案。
 
+1. 设置 → **声纹** → 下载模型（约 28 MiB / 29.8 MB）。复用已打包的 sherpa-onnx，使用 CPU；分人模型与声纹模型分别校验固定大小、SHA-256 和上游版本，下载失败可重试。没有模型时原有录音和转写继续工作。
+2. **转写时自动分人 A/B/C** 默认开启，但只在模型已安装时生效。可关闭，恢复原有转写。新会议重新编号；按首次发言顺序为 A/B/C，超过 Z 后为 AA/AB。
+3. 在会议 → **说话人** 点 **分析说话人**，本地分析已有音频、显示时间线并提供清晰样本试听，不改写现有逐字稿或纪要。点 **分人转写** 则按本地分人片段调用当前 ASR，更新逐字稿并生成纪要预览；现有纪要仍需明确采用后才替换。云端转写会增加请求次数，局部 ASR 可能反复加载模型，速度会受影响。
+4. 每位说话人点 **识别并命名（可选）**：可以只输入本场姓名，也可选择已有声纹档案。显示的相似度只用于推荐，不是身份概率；无论分数高低都需要用户确认。
+5. 只有勾选 **保存新声纹供以后识别** 或 **追加本次样本到此声纹** 并确认后，才保存所选样本到跨会议声纹库。可试听并挑选片段，同一人最多 20 份样本，适用于经确认的不同发声状态；不自动追加或覆盖。
+6. 设置 → **声纹** 支持姓名修改、样本试听、单样本移除、整份声纹删除。删除停止以后匹配，但不删除原始会议录音或改写历史逐字稿；本场已确认姓名保留，可在会议页单独清除。删除会议时清理本场私有试听样本，用户已主动存入声纹库的独立副本保留。会议页也可单独“清除本场分析”，移除本场特征、试听片段及命名关联，保留原始录音、逐字稿和声纹库副本。
+
+分人按有界音频窗口运行，跨窗口用声纹相似度保守拼接编号；检测到的重叠区间标为 **重叠/未确认**。每位说话人最多保留 3 份本场试听样本，每份 2–6 秒；过短、过静、明显削波或重叠的区间不用于入库。无法取得合格样本时仍允许仅命名。未被模型检测出的重叠、噪声、相似声音、窗口边界和感冒/嘶哑可能造成错分或漏分，编号和推荐都需要核对。相似度阈值为启发式初值，尚未经用户实际会议或感冒场景校准。
+
+模型、声纹向量和试听片段放在 `noBackupFilesDir`；公共会议目录只新增一个 `speakers.json` 分析引用。逐字稿与纪要保持原有格式。复制会议不会共享另一场仍存在会议的身份；重命名会议后可继续读取关联。跨设备复制或清除应用数据后，需要重新分析本地说话人。模型版本不同的声纹不会相互匹配。
+
+模型来源与许可：
+- [pyannote segmentation 3.0 ONNX INT8](https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/tree/9403a6902bb58e3d5ae8c7e77c3422de279db2e0)，MIT（CNRS）；附带许可证位于 assets/licenses/pyannote-segmentation-MIT.txt。
+- [3D-Speaker CAMPPlus 中英模型](https://huggingface.co/csukuangfj/speaker-embedding-models/tree/0743f301363dec56491a490f6d6cbc9d67f9a3bf)，[上游 3D-Speaker](https://github.com/modelscope/3D-Speaker)，附带其 Apache-2.0 许可证；实际模型文件名与 SHA 固定在 SpeakerModelStore.kt。
+- [sherpa-onnx Kotlin 分人示例](https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.8/kotlin-api-examples/test_offline_speaker_diarization.kt)。
+
+测试覆盖编号、跨窗口毫秒时间线、重叠区间、质量筛选、多个声纹样本、模型不兼容、每场隔离、确认/不入库、追加/删除/试听文件、失败回滚与 Compose 确认操作。`SpeakerDeviceTest` 为显式开启的隔离真机测试，只使用暂存的公开双人音频，不录制麦克风、不调用云 API、不修改用户会议。运行示例：
+
+```bash
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+# 在应用 cache/speaker-device-test/models/ 暂存两个固定模型，
+# 在 cache/speaker-device-test/two-speakers.wav 暂存上游公开样本后运行：
+adb shell am instrument -w -e speakerTest true -e class com.github.meetingrecorder.SpeakerDeviceTest com.github.meetingrecorder.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+双人测试音频为 [上游 1-two-speakers-en.wav](https://huggingface.co/csukuangfj/speaker-embedding-models/blob/0743f301363dec56491a490f6d6cbc9d67f9a3bf/1-two-speakers-en.wav)，512044 bytes，SHA-256 `f1c877dc01595e28be7147bf2fe38e5268147a868bf3fdb5c37b97f5940e21f3`；只暂存到测试缓存，不打包进 APK。
 
 Android CI 和发布工作流在 Gradle 配置前接受 SDK（含预览）许可并安装项目指定的 NDK 30.0.16138531 / CMake 4.1.2，避免干净 runner 在 ktlint 阶段因缺少原生工具链许可失败。
 
-声纹方案采用“一个人、多份经确认的样本”，覆盖正常、感冒及不同设备场景；不把单个样本的最高相似度直接当作身份结论。保留样本来源、质量、用户确认和移除能力；新状态样本需确认后加入，避免自动更新污染档案。具体融合策略和阈值仍需真实录音评估。运行时可行性参考：[sherpa-onnx 官方多样本注册示例](https://github.com/k2-fsa/sherpa-onnx/blob/master/java-api-examples/SpeakerIdentification.java)；该接口支持不代表已经验证感冒场景准确率。
+### Android 模板提示词
+
+设置 → 提示词中选择会议类型，会显示该模板独立的中文摘要提示词；修改后点击保存，可恢复当前模板默认值。生成时按实际所选模板读取配置，会议内临时选择也生效。转写与标题提示词独立于摘要模板。全局补充要求默认留空，兼容保留旧版自定义摘要提示词；模板自定义按枚举名存储，留空使用内置默认。摘要版本记录该模板提示词与全局补充要求。测试覆盖模板切换、独立持久化、恢复默认和原文插值。

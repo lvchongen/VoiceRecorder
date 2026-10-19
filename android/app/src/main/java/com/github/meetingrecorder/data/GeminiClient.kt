@@ -66,7 +66,7 @@ class GeminiClient(
         onStatus: (String) -> Unit,
     ): String = withContext(Dispatchers.IO) {
         onStatus("Generating meeting notes…")
-        validateSummaryReferences(generateContent(prompt = buildSummaryPrompt(transcript, options, config.summarizationPrompt)), transcript)
+        validateSummaryReferences(generateContent(prompt = buildSummaryPrompt(transcript, options, config.summarizationPrompt, config.templatePrompt(options.template))), transcript)
     }
 
     override suspend fun generateTitle(
