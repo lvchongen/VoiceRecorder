@@ -281,9 +281,9 @@ Stopping a recording finalizes audio and meeting metadata, removes the recording
 
 `data/SummaryOptions.kt` defines six meeting types, three detail levels and the shared Gemini/DeepSeek prompt builder. `Config.summaryTemplate` / `summaryDetail` default to GENERAL/STANDARD; existing language and custom prompts remain intact. Source line IDs are added in memory, never written into transcript.md. Mechanical reference validation rejects out-of-range P IDs and absent bracketed HH:MM:SS timestamps; do not describe this as factual verification.
 
-`MeetingDetailViewModel` stages a `SummaryVersion` preview for both notes-only and audio-first generation. Only adoption writes notes.md via `SummaryHistory`; dismissing or generation failure preserves prior notes. `SummaryHistory` appends JSON snapshots under each meeting's notes-history/, archives legacy notes before replacement, preserves source/options/provider/model/custom prompt, and restores through the same adoption path. Encode defaults explicitly: generated IDs and timestamps must survive round-trip serialization. Keep notes.md and meeting.json compatible with Linux. Recording/import main flows still use the original checkpoints and default options. Unsaved previews are ViewModel state, not durable drafts.
+`MeetingDetailViewModel` immediately saves generated notes through SummaryHistory.adopt for both notes-only and audio-first paths, updates visible notes and metadata, and archives the old version automatically. No generated preview/adoption step. Preview state is used only for explicitly browsing historical versions; restore/close controls use separate full-width rows. Generation or archive failure preserves prior notes. SummaryHistory snapshots retain source/options/provider/model/prompt and remain compatible with Linux.
 
-`SummaryOptionsEditor` reuses Material 3 exposed dropdowns in Settings and the detail dialog. Preview and source evidence reuse the native Markdown viewer. Tests: SummaryOptionsTest, SummaryHistoryTest, SummaryPreviewTest, provider mock HTTP tests and Compose detail tests. ViewModel IO dispatcher is injectable for deterministic load/preview/adoption tests. No live-model factual quality or device inference claims follow from JVM success.
+`SummaryOptionsEditor` uses existing Material 3 dropdowns. TranscriptTimeline.kt sorts timestamped utterances stably for reading, preserves untimed text, and never fabricates timestamps. Normal Notes/Transcript reading hides generated [P#] markers without modifying stored history/source. History evidence can still show numbered source. SummaryPreviewTest covers automatic save and failure protection; SummaryControlsTest covers options/history controls. Per user instruction, this usability update is built and installed without running tests.
 
 The optional local speaker pipeline is documented below; existing Gemini-only speaker labels are not independent verified voiceprints.
 
@@ -306,3 +306,11 @@ Tests: SpeakerDataTest, SpeakerRepositoryTest, SpeakerServiceTest, SpeakerContro
 ### Android 模板提示词
 
 设置 → 提示词中选择会议类型，会显示该模板独立的中文摘要提示词；修改后点击保存，可恢复当前模板默认值。生成时按实际所选模板读取配置，会议内临时选择也生效。转写与标题提示词独立于摘要模板。全局补充要求默认留空，兼容保留旧版自定义摘要提示词；模板自定义按枚举名存储，留空使用内置默认。摘要版本记录该模板提示词与全局补充要求。测试覆盖模板切换、独立持久化、恢复默认和原文插值。
+
+ASR 生命周期：一次会议转写通过 `TranscriptionClient.withSession` 共用一个本地 Qwen/Whisper 实例，所有说话片段和空片段后的整段重试复用该实例，完成/失败/取消后释放。先完成声纹分析再加载 ASR，避免分人模型与 ASR 同时常驻。当前易用性修改按用户要求仅 build + adb install -r，不执行测试。
+
+说话人计数只包含有有效声纹证据的分组。分人模型产生的过短/低质量碎片保留为未确认，不直接创建新字母或声纹档案；原始语音内容仍参与转写。分组策略版本升为 v2，使旧分组缓存下次处理时重算。ASR 与声纹在同一次用户操作中完成，内部仍为两个独立模型。
+
+重新处理已有录音：会议右上角菜单及 Transcript 页提供“重新转写并生成”，直接使用当前保存的录音，重跑 ASR 和纪要生成，不重新录制；使用当前纪要的模板选项（没有记录时使用默认选项）。结果自动保存，旧纪要自动归档。菜单“仅重新生成纪要”复用现有 Transcript。处理中禁用重复操作。
+
+新增“对话翻译”内容模板：独立中文提示词，保留说话人、时间戳、问答顺序并逐段翻译，不执行摘要概览/详细程度/行动项策略。支持原文＋中英互译、译为中文/英文/日文；原语言旧偏好在此模式按原文＋互译处理。重新转写及仅重新生成均先打开模板选择，默认沿用当前已保存版本的选项，确认后自动生成并保存。未确定说话人统一显示“未确认”，旧内容阅读时兼容替换旧标签。

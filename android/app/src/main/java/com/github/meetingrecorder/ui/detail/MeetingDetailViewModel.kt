@@ -204,7 +204,16 @@ class MeetingDetailViewModel(
         }
     }
 
-    /** Persist the transcript, then stage notes for explicit adoption. Requires audio. */
+    private suspend fun saveGeneratedNotes(dir: File, version: SummaryVersion) {
+        _genState.value = GenState.Processing("正在保存纪要…")
+        processor.adoptSummary(dir, version)
+        _notes.value = version.notes
+        _versions.value = processor.summaryVersions(dir)
+        maybeGenerateTitle(version.notes)
+        processor.saveMetadata(dir, currentTitle, durationSeconds)
+    }
+
+    /** Persist generated transcript and notes immediately; preserve prior notes in history. */
     fun generateTranscriptAndNotes(options: SummaryOptions = defaultSummaryOptions, withSpeakers: Boolean = false) {
         if (_genState.value is GenState.Processing) return
         val dir = meetingDir ?: return
@@ -230,7 +239,7 @@ class MeetingDetailViewModel(
                 ) {
                     _genState.value = GenState.Processing(it)
                 }
-                _preview.value = SummaryVersion(notes = result.notes, sourceTranscript = result.transcript, options = options, provider = provider.name, model = model, prompt = prompt)
+                saveGeneratedNotes(dir, SummaryVersion(notes = result.notes, sourceTranscript = result.transcript, options = options, provider = provider.name, model = model, prompt = prompt))
                 _transcript.value = result.transcript
                 _genState.value = GenState.Idle
             } catch (e: CancellationException) {
@@ -244,12 +253,12 @@ class MeetingDetailViewModel(
     /** Generate notes when none exist yet, reusing the already-loaded transcript. */
     fun generateNotes() = runNotesGeneration()
 
-    /** Reuse the transcript and stage a preview; adoption is an explicit separate action. */
+    /** Reuse the transcript and save generated notes without another confirmation. */
     fun regenerateNotes(options: SummaryOptions = defaultSummaryOptions) = runNotesGeneration(options)
 
     private fun runNotesGeneration(options: SummaryOptions = defaultSummaryOptions) {
         if (_genState.value is GenState.Processing) return
-        if (meetingDir == null) return
+        val dir = meetingDir ?: return
         val transcript = _transcript.value ?: return
         config.processingError(needsTranscription = false)?.let {
             _genState.value = GenState.Error(it)
@@ -263,7 +272,7 @@ class MeetingDetailViewModel(
                 val prompt = config.templatePrompt(options.template) + "\n\n全局补充要求：\n" + config.summarizationPrompt
                 val notes = processor.previewSummary(transcript, options) { _genState.value = GenState.Processing(it) }
                 check(notes.isNotBlank()) { "模型返回了空纪要，请重试。" }
-                _preview.value = SummaryVersion(notes = notes, sourceTranscript = transcript, options = options, provider = provider.name, model = model, prompt = prompt)
+                saveGeneratedNotes(dir, SummaryVersion(notes = notes, sourceTranscript = transcript, options = options, provider = provider.name, model = model, prompt = prompt))
                 _genState.value = GenState.Idle
             } catch (e: CancellationException) {
                 throw e // a cancelled job (e.g. reload) must not surface as an error

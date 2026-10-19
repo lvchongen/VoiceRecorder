@@ -52,34 +52,44 @@ class QwenTranscriptionClient(
     private val chunks: AudioChunks = AndroidAudioChunks(),
     private val engineFactory: (File) -> QwenEngine = { SherpaQwenEngine(it) },
 ) : TranscriptionClient {
-    override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String = withContext(Dispatchers.IO) {
+    override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String =
+        withSession(onStatus) { it.transcribe(audioFile, mimeType, onStatus) }
+
+    override suspend fun <T> withSession(onStatus: (String) -> Unit, block: suspend (TranscriptionClient) -> T): T = withContext(Dispatchers.IO) {
         models.withModel { directory ->
             coroutineContext.ensureActive()
             onStatus("正在加载 Qwen3-ASR…")
             engineFactory(directory).use { engine ->
-                val output = StringBuilder()
-                chunks.read(audioFile) { chunk ->
-                    val samples = whisperSamples(chunk.wav)
-                    // Bound decoder output and cancellation latency. Native decode cannot be interrupted;
-                    // cancellation is checked before/after each 20-second audio segment, never freeing a live decoder.
-                    var offset = 0
-                    while (offset < samples.size) {
-                        coroutineContext.ensureActive()
-                        val end = minOf(offset + 20 * 16000, samples.size)
-                        val seconds = chunk.startSeconds + offset / 16000
-                        onStatus("Qwen3-ASR 正在识别：$seconds 秒…")
-                        val text = engine.transcribe(samples.copyOfRange(offset, end))
-                        coroutineContext.ensureActive()
-                        if (text.isNotBlank()) {
-                            output.append("[%02d:%02d:%02d] ".format(Locale.ROOT, seconds / 3600, seconds / 60 % 60, seconds % 60))
-                                .append(text).append("\n\n")
-                        }
-                        offset = end
-                    }
-                }
-                if (output.isBlank()) throw NoSpeechDetectedException("未识别到语音，请检查音频")
-                output.toString().trim()
+                block(object : TranscriptionClient {
+                    override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String =
+                        transcribeWithEngine(audioFile, onStatus, engine)
+                })
             }
         }
+    }
+
+    private suspend fun transcribeWithEngine(audioFile: File, onStatus: (String) -> Unit, engine: QwenEngine): String {
+        val output = StringBuilder()
+        chunks.read(audioFile) { chunk ->
+            val samples = whisperSamples(chunk.wav)
+            // Bound decoder output and cancellation latency. Native decode cannot be interrupted;
+            // cancellation is checked before/after each 20-second audio segment, never freeing a live decoder.
+            var offset = 0
+            while (offset < samples.size) {
+                coroutineContext.ensureActive()
+                val end = minOf(offset + 20 * 16000, samples.size)
+                val seconds = chunk.startSeconds + offset / 16000
+                onStatus("Qwen3-ASR 正在识别：$seconds 秒…")
+                val text = engine.transcribe(samples.copyOfRange(offset, end))
+                coroutineContext.ensureActive()
+                if (text.isNotBlank()) {
+                    output.append("[%02d:%02d:%02d] ".format(Locale.ROOT, seconds / 3600, seconds / 60 % 60, seconds % 60))
+                        .append(text).append("\n\n")
+                }
+                offset = end
+            }
+        }
+        if (output.isBlank()) throw NoSpeechDetectedException("未识别到语音，请检查音频")
+        return output.toString().trim()
     }
 }

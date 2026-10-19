@@ -24,10 +24,19 @@ import com.github.meetingrecorder.data.SummaryOptions
 @Composable
 fun SummaryOptionsEditor(options: SummaryOptions, onChange: (SummaryOptions) -> Unit, showLanguage: Boolean = true) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SummaryChoice("会议类型", options.template, MeetingTemplate.entries.map { it to it.label }) { onChange(options.copy(template = it)) }
-        SummaryChoice("详细程度", options.detail, SummaryDetail.entries.map { it to it.label }) { onChange(options.copy(detail = it)) }
+        SummaryChoice("内容模板", options.template, MeetingTemplate.entries.map { it to it.label }) {
+            val language = if (it != MeetingTemplate.TRANSLATION && options.language in listOf("English", "Japanese")) "Bilingual" else options.language
+            onChange(options.copy(template = it, language = language))
+        }
+        if (options.template != MeetingTemplate.TRANSLATION) {
+            SummaryChoice("详细程度", options.detail, SummaryDetail.entries.map { it to it.label }) { onChange(options.copy(detail = it)) }
+        }
         if (showLanguage) {
-            SummaryChoice("摘要语言", options.language, listOf("Bilingual" to "中英双语", "Chinese" to "中文", "Original" to "原语言")) { onChange(options.copy(language = it)) }
+            if (options.template == MeetingTemplate.TRANSLATION) {
+                SummaryChoice("翻译方式", options.language.takeIf { it in listOf("Bilingual", "Chinese", "English", "Japanese") } ?: "Bilingual", listOf("Bilingual" to "原文＋中英互译", "Chinese" to "译为中文", "English" to "译为英文", "Japanese" to "译为日文")) { onChange(options.copy(language = it)) }
+            } else {
+                SummaryChoice("摘要语言", options.language, listOf("Bilingual" to "中英双语", "Chinese" to "中文", "Original" to "原语言")) { onChange(options.copy(language = it)) }
+            }
         }
     }
 }

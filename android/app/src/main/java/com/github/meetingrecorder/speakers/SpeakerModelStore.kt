@@ -37,7 +37,7 @@ class SpeakerModelStore(
     }
 
     companion object {
-        const val PIPELINE_VERSION = "pyannote-int8-campplus-zh-en-v1"
+        const val PIPELINE_VERSION = "pyannote-int8-campplus-zh-en-v2"
         val SEGMENTATION = WhisperModel("segmentation", "segmentation.int8.onnx", 1540506L, "d582f4b4c6b48205de7e0643c57df0df5615a3c176189be3fc461e9d18827b5d")
         val EMBEDDING = WhisperModel("embedding", "campplus.onnx", 28281164L, "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2")
         val FILES = listOf(SEGMENTATION, EMBEDDING)

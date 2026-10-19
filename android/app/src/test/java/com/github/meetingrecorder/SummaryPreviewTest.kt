@@ -69,7 +69,7 @@ class SummaryPreviewTest {
     }
 
     @Test
-    fun `preview preserves current notes and options until adoption then supports restoration`() = runTest(dispatcher) {
+    fun `generation saves immediately and archives prior notes without preview`() = runTest(dispatcher) {
         vm.load(dir.absolutePath)
         advanceUntilIdle()
         val original = File(dir, "notes.md").readText()
@@ -77,11 +77,9 @@ class SummaryPreviewTest {
         vm.regenerateNotes(options)
         advanceUntilIdle()
         assertEquals(options, received)
-        assertEquals(options, vm.preview.value?.options)
-        assertEquals(original, File(dir, "notes.md").readText())
-        assertEquals(original, vm.notes.value)
-        vm.adoptPreview()
-        advanceUntilIdle()
+        assertNull(vm.preview.value)
+        assertEquals("Proposed B; not approved [P1]", vm.notes.value)
+        assertEquals(options, vm.versions.value.first { it.notes != original }.options)
         assertEquals("Proposed B; not approved [P1]", File(dir, "notes.md").readText())
         assertNull(vm.preview.value)
         assertEquals(2, vm.versions.value.size)
@@ -92,14 +90,9 @@ class SummaryPreviewTest {
     }
 
     @Test
-    fun `dismissal and failed generation never replace notes`() = runTest(dispatcher) {
+    fun `failed generation never replaces saved notes`() = runTest(dispatcher) {
         vm.load(dir.absolutePath)
         advanceUntilIdle()
-        vm.regenerateNotes()
-        advanceUntilIdle()
-        vm.dismissPreview()
-        assertNull(vm.preview.value)
-        assertEquals("Original notes", File(dir, "notes.md").readText())
         failSummary = true
         vm.regenerateNotes()
         advanceUntilIdle()

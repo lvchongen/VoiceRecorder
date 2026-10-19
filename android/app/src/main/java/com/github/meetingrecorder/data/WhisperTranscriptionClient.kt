@@ -62,8 +62,11 @@ class WhisperTranscriptionClient(
     private val models: WhisperModelStore,
     private val chunks: AudioChunks = AndroidAudioChunks(),
 ) : TranscriptionClient {
+    override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String =
+        withSession(onStatus) { it.transcribe(audioFile, mimeType, onStatus) }
+
     @OptIn(InternalCoroutinesApi::class)
-    override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String = withContext(Dispatchers.IO) {
+    override suspend fun <T> withSession(onStatus: (String) -> Unit, block: suspend (TranscriptionClient) -> T): T = withContext(Dispatchers.IO) {
         val model = WhisperModel.selected(config.whisperModel)
         models.withModel(model) { modelFile ->
             onStatus("Loading local Whisper ${model.id}…")
@@ -75,21 +78,10 @@ class WhisperTranscriptionClient(
                 if (cause != null) synchronized(guard) { if (!closed) native.cancel(handle) }
             }
             try {
-                val result = StringBuilder()
-                var part = 0
-                chunks.read(audioFile) { chunk ->
-                    coroutineContext.ensureActive()
-                    part++
-                    onStatus("Local Whisper ${model.id}: segment $part (${chunk.startSeconds}s)…")
-                    val text = native.transcribe(handle, whisperSamples(chunk.wav), minOf(4, Runtime.getRuntime().availableProcessors())).decodeToString().trim()
-                    coroutineContext.ensureActive()
-                    if (text.isNotBlank()) {
-                        val s = chunk.startSeconds
-                        result.append("[%02d:%02d:%02d] ".format(java.util.Locale.ROOT, s / 3600, s / 60 % 60, s % 60)).append(text).append("\n\n")
-                    }
-                }
-                if (result.isBlank()) throw NoSpeechDetectedException("未识别到语音，请检查音频或尝试其他模型")
-                result.toString().trim()
+                block(object : TranscriptionClient {
+                    override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String =
+                        transcribeWithHandle(audioFile, onStatus, native, handle, model.id)
+                })
             } finally {
                 cancellation?.dispose()
                 synchronized(guard) {
@@ -98,5 +90,23 @@ class WhisperTranscriptionClient(
                 }
             }
         }
+    }
+
+    private suspend fun transcribeWithHandle(audioFile: File, onStatus: (String) -> Unit, native: WhisperNative, handle: Long, modelId: String): String {
+        val result = StringBuilder()
+        var part = 0
+        chunks.read(audioFile) { chunk ->
+            coroutineContext.ensureActive()
+            part++
+            onStatus("Local Whisper $modelId: segment $part (${chunk.startSeconds}s)…")
+            val text = native.transcribe(handle, whisperSamples(chunk.wav), minOf(4, Runtime.getRuntime().availableProcessors())).decodeToString().trim()
+            coroutineContext.ensureActive()
+            if (text.isNotBlank()) {
+                val s = chunk.startSeconds
+                result.append("[%02d:%02d:%02d] ".format(java.util.Locale.ROOT, s / 3600, s / 60 % 60, s % 60)).append(text).append("\n\n")
+            }
+        }
+        if (result.isBlank()) throw NoSpeechDetectedException("未识别到语音，请检查音频或尝试其他模型")
+        return result.toString().trim()
     }
 }

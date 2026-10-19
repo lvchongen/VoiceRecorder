@@ -46,21 +46,21 @@ class SummaryControlsTest {
         compose.onNodeWithText("技术评审").performClick()
         compose.onNodeWithText("标准").performClick()
         compose.onNodeWithText("详细").performClick()
-        compose.onNodeWithText("生成预览").performClick()
+        compose.onNodeWithText("生成并保存").performClick()
         verify(vm).regenerateNotes(SummaryOptions(MeetingTemplate.TECHNICAL, SummaryDetail.DETAILED))
     }
 
     @Test
-    fun `preview exposes original evidence and explicit adoption or dismissal`() {
+    fun `history viewer offers readable full width restore and close controls`() {
         val vm = fixture(SummaryVersion(notes = "Proposal [P1]", sourceTranscript = "A: proposed B", options = SummaryOptions(), model = "fixture-model"))
         compose.setContent { MaterialTheme { MeetingDetailScreen("/fixture", {}, vm) } }
-        compose.onNodeWithText("纪要预览").assertIsDisplayed()
+        compose.onNodeWithText("历史纪要").assertIsDisplayed()
         compose.onNodeWithText("查看引用原文").performClick()
         compose.onNodeWithText("返回纪要").assertIsDisplayed()
         compose.onNodeWithText("返回纪要").performClick()
-        compose.onNodeWithText("采用此版本").performClick()
+        compose.onNodeWithText("恢复此历史版本").performClick()
         verify(vm).adoptPreview()
-        compose.onNodeWithText("保留原版").performClick()
+        compose.onNodeWithText("关闭").performClick()
         verify(vm).dismissPreview()
     }
 }
