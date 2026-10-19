@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- All strokes fit the 66dp adaptive-icon safe zone. -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M38,27 L61,27 L76,42 L76,74 Q76,81 69,81 L38,81 Q31,81 31,74 L31,34 Q31,27 38,27 Z" />
+    <path android:fillColor="#A8C7FF"
+        android:pathData="M61,27 L61,36 Q61,42 67,42 L76,42 Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#2457D6"
+        android:strokeWidth="4" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M40,53 L40,60 M47,47 L47,66 M54,43 L54,69 M61,49 L61,63 M68,53 L68,59" />
+    <path android:fillColor="#00000000" android:strokeColor="#2457D6"
+        android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M41,74 L58,74" />
+</vector>

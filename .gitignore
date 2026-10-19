@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+
+# Config with secrets
+# (config.json contains API keys — never commit it)
+~/.config/meeting-recorder/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.env
+
+# Keystores (signing keys — never commit)
+*.keystore
+*.jks
+
+# Android build output and local config
+android/local.properties
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/captures/
+
+# Claude Code session worktrees
+.claude/worktrees/
+
+# Coverage artifacts
+.coverage
+coverage.xml
+
+# Gemini model test-script outputs (scripts/README.md)
+/tmp/
+
+# Local build artifacts and delivery packages
+.cxx/
+deliverables/
+*.apk
+*.aab
+.env.*
