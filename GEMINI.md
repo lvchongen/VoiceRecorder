@@ -231,3 +231,6 @@ Stopping a recording finalizes audio and meeting metadata, removes the recording
 `SummaryOptionsEditor` reuses Material 3 exposed dropdowns in Settings and the detail dialog. Preview and source evidence reuse the native Markdown viewer. Tests: SummaryOptionsTest, SummaryHistoryTest, SummaryPreviewTest, provider mock HTTP tests and Compose detail tests. ViewModel IO dispatcher is injectable for deterministic load/preview/adoption tests. No live-model factual quality or device inference claims follow from JVM success.
 
 Speaker embeddings and cross-meeting identity management are planned only; see README's voiceprint requirements. Do not represent existing Gemini speaker labels as verified voiceprints.
+
+
+CI and Android release setup explicitly accept SDK/preview licenses and install the exact app NDK/CMake versions before Gradle configuration. Keep those versions aligned with app/build.gradle.kts. Speaker-profile planning includes multiple user-confirmed samples per person; official multi-enrollment support is not evidence of illness robustness without evaluation.

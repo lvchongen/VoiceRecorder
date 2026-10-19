@@ -494,3 +494,8 @@ Transcripts are saved as soon as transcription completes, before requesting a su
 ### 声纹识别后续需求（尚未实现）
 
 会议内按首次发言编号 A、B、C；可显示经确认的姓名，例如 A · 张三。后续声纹库允许跨会议匹配，但会议内编号独立保留。只有质量合格、相似度及候选差距通过经真实录音校准的阈值才可自动关联，其他情况保留匿名或待确认。声纹管理需支持样本试听、命名、追加/移除样本、解除错误关联及删除档案；删除档案不删除录音或改写历史逐字稿。实施前需验证分人、重叠讲话、噪声/设备变化与误匹配率。当前 Gemini 标签不构成独立声纹识别，Whisper/Qwen/阿里链路也没有新增声纹能力。
+
+
+Android CI 和发布工作流在 Gradle 配置前接受 SDK（含预览）许可并安装项目指定的 NDK 30.0.16138531 / CMake 4.1.2，避免干净 runner 在 ktlint 阶段因缺少原生工具链许可失败。
+
+声纹方案采用“一个人、多份经确认的样本”，覆盖正常、感冒及不同设备场景；不把单个样本的最高相似度直接当作身份结论。保留样本来源、质量、用户确认和移除能力；新状态样本需确认后加入，避免自动更新污染档案。具体融合策略和阈值仍需真实录音评估。运行时可行性参考：[sherpa-onnx 官方多样本注册示例](https://github.com/k2-fsa/sherpa-onnx/blob/master/java-api-examples/SpeakerIdentification.java)；该接口支持不代表已经验证感冒场景准确率。

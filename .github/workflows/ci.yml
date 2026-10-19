@@ -325,10 +325,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install Android SDK platform + build tools
+      - name: Install Android SDK and native toolchain
         run: |
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-            "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          # NDK 30 uses the preview license. Keep sdkmanager failures fatal while
+          # allowing yes to exit with SIGPIPE once sdkmanager stops reading.
+          set +o pipefail
+          yes | "$sdkmanager" --licenses --channel=3 > /dev/null
+          yes | "$sdkmanager" --channel=3 \
+            "platforms;android-35" "build-tools;35.0.0" \
+            "ndk;30.0.16138531" "cmake;4.1.2"
 
       - name: Kotlin lint (ktlint)
         working-directory: android
