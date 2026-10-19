@@ -275,3 +275,34 @@ Device validation on 2026-10-19: PKG110/API 35 passed public-fixture JNI/AAC rou
 ## Android manual processing after recording
 
 Stopping a recording finalizes audio and meeting metadata, removes the recording lock, and shows AudioSaved with a library shortcut. It never invokes ASR or summarization. Recording does not require processing credentials. The former processing-countdown UI/state is removed; its legacy preference remains harmless and is ignored. Detail-screen generate actions explicitly start processing later. Existing import-and-process remains a user-initiated operation. RecordingStopDecisionTest and MeetingProcessorTest cover save-only dispatch, library visibility, audio preservation and zero network requests.
+
+
+## Android summary templates and history
+
+`data/SummaryOptions.kt` defines six meeting types, three detail levels and the shared Gemini/DeepSeek prompt builder. `Config.summaryTemplate` / `summaryDetail` default to GENERAL/STANDARD; existing language and custom prompts remain intact. Source line IDs are added in memory, never written into transcript.md. Mechanical reference validation rejects out-of-range P IDs and absent bracketed HH:MM:SS timestamps; do not describe this as factual verification.
+
+`MeetingDetailViewModel` stages a `SummaryVersion` preview for both notes-only and audio-first generation. Only adoption writes notes.md via `SummaryHistory`; dismissing or generation failure preserves prior notes. `SummaryHistory` appends JSON snapshots under each meeting's notes-history/, archives legacy notes before replacement, preserves source/options/provider/model/custom prompt, and restores through the same adoption path. Encode defaults explicitly: generated IDs and timestamps must survive round-trip serialization. Keep notes.md and meeting.json compatible with Linux. Recording/import main flows still use the original checkpoints and default options. Unsaved previews are ViewModel state, not durable drafts.
+
+`SummaryOptionsEditor` reuses Material 3 exposed dropdowns in Settings and the detail dialog. Preview and source evidence reuse the native Markdown viewer. Tests: SummaryOptionsTest, SummaryHistoryTest, SummaryPreviewTest, provider mock HTTP tests and Compose detail tests. ViewModel IO dispatcher is injectable for deterministic load/preview/adoption tests. No live-model factual quality or device inference claims follow from JVM success.
+
+The optional local speaker pipeline is documented below; existing Gemini-only speaker labels are not independent verified voiceprints.
+
+
+CI and Android release setup explicitly accept SDK/preview licenses and install the exact app NDK/CMake versions before Gradle configuration. Keep those versions aligned with app/build.gradle.kts. Speaker profiles support multiple samples per person; official multi-enrollment support is not evidence of illness robustness without evaluation.
+
+
+## Android local speakers and voice profiles
+
+`speakers/` owns local diarization, embeddings, meeting-local A/B/C and automatic cross-meeting voice profiles. Models prepare in an application-scoped background job at startup, and retry after recording save. AppContainer queues nonblocking analysis/enrollment after audio save and wraps ASR when models are ready. Missing models never block recording/transcription. SpeakerTranscriptionClient retries the original complete recording only for typed NoSpeechDetectedException; analysis failures also fall back to ordinary ASR. Cancellation/auth/network failures are not treated as empty speech.
+
+`SpeakerService` decodes bounded chunks twice (analysis then turn ASR), never buffers an entire long recording. AudioChunk.startMilliseconds preserves fractional chunk offsets; legacy startSeconds consumers are unchanged. Native work is checked for cancellation before/after bounded windows and released before ASR. Overlapping detected turns become unassigned; short/quiet/clipped samples cannot enroll. Cross-window stitching uses heuristic cosine score 0.65 and candidate margin 0.08, not calibrated identity guarantees. A local cluster cannot consume a label already used by another cluster in the same window. Cache checks audio SHA, pipeline version and embedding model ID; changing model/stitching semantics requires changing PIPELINE_VERSION.
+
+`SpeakerRepository` stores embeddings and 2–6-second clips in noBackupFilesDir; public speakers.json contains only an analysis ID. autoEnroll matches compatible profiles at cosine >=0.8 with margin >=0.1, excluding IDs already used in this meeting; unmatched eligible voices become numbered unnamed profiles. Matching is heuristic, not an identity guarantee. Cache processing is idempotent; deleted linked profiles are not recreated from that cache. Independent profile clips survive meeting deletion. Profile updates append samples; JSON writes and copy rollback remain atomic. Rename/delete never rewrite old transcripts/notes.
+
+UI: no extra recording/save buttons or speaker tab. Meeting overflow opens voiceprint management; Settings retains its Voiceprints tab. VoiceprintPanel exposes add/import, audition, rename, update via a single-speaker recording, sample removal and deletion. Enrollment is automatic, without per-person confirmation or checkboxes. SpeakerViewModel owns IO/cancellation/player lifecycle and subscribes to repository profile changes so automatic enrollment refreshes an open manager. Keep existing Material 3 styling. Samples remain bounded at 3 per meeting speaker and 20 per profile.
+
+Tests: SpeakerDataTest, SpeakerRepositoryTest, SpeakerServiceTest, SpeakerControlsTest, millisecond chunk/route regressions, plus opt-in SpeakerDeviceTest using staged public two-speaker audio in isolated app cache. Do not substitute self-similarity or synthetic fixtures for real cross-person/illness accuracy evaluation. Never enable microphone device tests implicitly. Device installs must use adb install -r, preserving existing app data.
+
+### Android 模板提示词
+
+设置 → 提示词中选择会议类型，会显示该模板独立的中文摘要提示词；修改后点击保存，可恢复当前模板默认值。生成时按实际所选模板读取配置，会议内临时选择也生效。转写与标题提示词独立于摘要模板。全局补充要求默认留空，兼容保留旧版自定义摘要提示词；模板自定义按枚举名存储，留空使用内置默认。摘要版本记录该模板提示词与全局补充要求。测试覆盖模板切换、独立持久化、恢复默认和原文插值。

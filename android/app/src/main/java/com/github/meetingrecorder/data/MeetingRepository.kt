@@ -7,7 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.time.LocalDateTime
 
-class MeetingRepository(private val rootDir: File) : MeetingStore {
+class MeetingRepository(private val rootDir: File, private val onMeetingDeleted: (File) -> Unit = {}) : MeetingStore {
 
     // Captured when the repository (a per-process singleton) is constructed — effectively app launch.
     // recoverOrphanedRecordings() only acts on directories locked *before* this moment, so a recording
@@ -171,7 +171,8 @@ class MeetingRepository(private val rootDir: File) : MeetingStore {
 
     fun deleteMeeting(dir: File) {
         if (dir.canonicalPath.startsWith(rootDir.canonicalPath + File.separator)) {
-            dir.deleteRecursively()
+            onMeetingDeleted(dir)
+            check(!dir.exists() || dir.deleteRecursively()) { "会议删除未完成，请重试" }
         }
     }
 

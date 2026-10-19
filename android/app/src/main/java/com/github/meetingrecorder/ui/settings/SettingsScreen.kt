@@ -58,6 +58,7 @@ import com.github.meetingrecorder.data.SummaryProvider
 import com.github.meetingrecorder.data.ThemeMode
 import com.github.meetingrecorder.data.TranscriptionProvider
 import com.github.meetingrecorder.data.WhisperModel
+import com.github.meetingrecorder.speakers.VoiceprintPanel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,11 +92,13 @@ fun SettingsScreen(
                     onClick = { selectedTab = 1 },
                     text = { Text(stringResource(R.string.tab_prompts)) },
                 )
+                Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("声纹") })
             }
 
             when (selectedTab) {
                 0 -> GeneralTab(viewModel)
                 1 -> PromptsTab(viewModel)
+                2 -> VoiceprintPanel()
             }
         }
     }
@@ -119,6 +122,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
     var aliBaseUrlDraft by remember { mutableStateOf(aliBaseUrl) }
     val aliModel by viewModel.aliModel.collectAsState()
     var aliModelDraft by remember { mutableStateOf(aliModel) }
+    var summaryOptionsDraft by remember { mutableStateOf(viewModel.summaryOptions) }
     val summaryLanguage by viewModel.summaryLanguage.collectAsState()
     var summaryLanguageDraft by remember { mutableStateOf(summaryLanguage) }
     val summaryProvider by viewModel.summaryProvider.collectAsState()
@@ -243,6 +247,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
         }
 
         HorizontalDivider()
+        com.github.meetingrecorder.ui.detail.SummaryOptionsEditor(summaryOptionsDraft, { summaryOptionsDraft = it }, showLanguage = false)
         Text("摘要语言", style = MaterialTheme.typography.titleMedium)
         listOf("Bilingual" to "中英双语摘要", "Chinese" to "中文摘要", "Original" to "原语言摘要").forEach { (value, label) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -366,6 +371,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
                 viewModel.setAliApiKey(aliApiKeyDraft.trim())
                 viewModel.setAliBaseUrl(aliBaseUrlDraft.trim())
                 viewModel.setAliModel(aliModelDraft.trim())
+                viewModel.setSummaryOptions(summaryOptionsDraft)
                 viewModel.setSummaryLanguage(summaryLanguageDraft)
                 viewModel.setSummaryProvider(providerDraft)
                 viewModel.setDeepSeekApiKey(deepSeekKeyDraft)
@@ -384,7 +390,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
 }
 
 @Composable
-private fun PromptsTab(viewModel: SettingsViewModel) {
+internal fun PromptsTab(viewModel: SettingsViewModel) {
     val transcriptionPrompt by viewModel.transcriptionPrompt.collectAsState()
     val summarizationPrompt by viewModel.summarizationPrompt.collectAsState()
     val titlePrompt by viewModel.titlePrompt.collectAsState()
@@ -392,9 +398,10 @@ private fun PromptsTab(viewModel: SettingsViewModel) {
     var transcriptionDraft by rememberSaveable {
         mutableStateOf(transcriptionPrompt.ifBlank { Config.DEFAULT_TRANSCRIPTION_PROMPT })
     }
-    var summarizationDraft by rememberSaveable {
-        mutableStateOf(summarizationPrompt.ifBlank { Config.DEFAULT_SUMMARIZATION_PROMPT })
-    }
+    var summarizationDraft by rememberSaveable { mutableStateOf(summarizationPrompt) }
+    var promptOptions by remember { mutableStateOf(viewModel.summaryOptions) }
+    val templateDrafts = remember { androidx.compose.runtime.mutableStateMapOf<com.github.meetingrecorder.data.MeetingTemplate, String>() }
+
     var titleDraft by rememberSaveable {
         mutableStateOf(titlePrompt.ifBlank { Config.DEFAULT_TITLE_PROMPT })
     }
@@ -406,17 +413,37 @@ private fun PromptsTab(viewModel: SettingsViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        Text("摘要提示词随会议模板切换。每个模板可单独修改；修改后点击底部保存。转写和标题提示词独立生效。")
+        com.github.meetingrecorder.ui.detail.SummaryOptionsEditor(
+            options = promptOptions,
+            onChange = {
+                promptOptions = it
+                viewModel.setSummaryOptions(it)
+            },
+            showLanguage = false,
+        )
+        val selectedTemplate = promptOptions.template
+        val templateDraft = templateDrafts[selectedTemplate] ?: viewModel.templatePrompt(selectedTemplate)
+        PromptField(
+            label = "${selectedTemplate.label} · 摘要提示词",
+            value = templateDraft,
+            onValueChange = { templateDrafts[selectedTemplate] = it },
+            isDefault = templateDraft == selectedTemplate.defaultPrompt,
+        )
+        TextButton(onClick = { templateDrafts[selectedTemplate] = selectedTemplate.defaultPrompt }) {
+            Text("恢复当前模板默认提示词")
+        }
+        PromptField(
+            label = "全局补充要求（可选）",
+            value = summarizationDraft,
+            onValueChange = { summarizationDraft = it },
+        )
+        Text("对所有模板生效，默认留空。旧版自定义摘要提示词保留在这里；可清空，避免与模板冲突。", style = MaterialTheme.typography.bodySmall)
         PromptField(
             label = stringResource(R.string.label_transcription_prompt),
             value = transcriptionDraft,
             onValueChange = { transcriptionDraft = it },
             isDefault = transcriptionDraft == Config.DEFAULT_TRANSCRIPTION_PROMPT,
-        )
-        PromptField(
-            label = stringResource(R.string.label_summarization_prompt),
-            value = summarizationDraft,
-            onValueChange = { summarizationDraft = it },
-            isDefault = summarizationDraft == Config.DEFAULT_SUMMARIZATION_PROMPT,
         )
         PromptField(
             label = stringResource(R.string.label_meeting_title_prompt),
@@ -431,9 +458,8 @@ private fun PromptsTab(viewModel: SettingsViewModel) {
                 viewModel.setTranscriptionPrompt(
                     if (transcriptionDraft == Config.DEFAULT_TRANSCRIPTION_PROMPT) "" else transcriptionDraft,
                 )
-                viewModel.setSummarizationPrompt(
-                    if (summarizationDraft == Config.DEFAULT_SUMMARIZATION_PROMPT) "" else summarizationDraft,
-                )
+                templateDrafts.forEach { (template, prompt) -> viewModel.setTemplatePrompt(template, prompt) }
+                viewModel.setSummarizationPrompt(summarizationDraft)
                 viewModel.setTitlePrompt(
                     if (titleDraft == Config.DEFAULT_TITLE_PROMPT) "" else titleDraft,
                 )

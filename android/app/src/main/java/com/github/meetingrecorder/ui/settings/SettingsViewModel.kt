@@ -10,6 +10,7 @@ import com.github.meetingrecorder.data.ThemeMode
 import com.github.meetingrecorder.data.TranscriptionProvider
 import com.github.meetingrecorder.data.WhisperModel
 import com.github.meetingrecorder.data.WhisperModelStore
+import com.github.meetingrecorder.data.summaryOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,6 +108,12 @@ class SettingsViewModel(private val config: Config, private val models: WhisperM
         _aliModel.value = value
     }
 
+    val summaryOptions get() = config.summaryOptions()
+    fun setSummaryOptions(value: com.github.meetingrecorder.data.SummaryOptions) {
+        config.summaryTemplate = value.template
+        config.summaryDetail = value.detail
+    }
+
     private val _summaryLanguage = MutableStateFlow(config.summaryLanguage)
     val summaryLanguage = _summaryLanguage.asStateFlow()
     fun setSummaryLanguage(value: String) {
@@ -180,6 +187,10 @@ class SettingsViewModel(private val config: Config, private val models: WhisperM
         _transcriptionPrompt.value = value
         config.transcriptionPrompt = value
     }
+
+    fun templatePrompt(template: com.github.meetingrecorder.data.MeetingTemplate) = config.templatePrompt(template)
+
+    fun setTemplatePrompt(template: com.github.meetingrecorder.data.MeetingTemplate, value: String) = config.setTemplatePrompt(template, value)
 
     fun setSummarizationPrompt(value: String) {
         _summarizationPrompt.value = value

@@ -13,8 +13,14 @@ import com.github.meetingrecorder.data.QwenModelStore
 import com.github.meetingrecorder.data.QwenTranscriptionClient
 import com.github.meetingrecorder.data.SelectedSummaryClient
 import com.github.meetingrecorder.data.SelectedTranscriptionClient
+import com.github.meetingrecorder.data.TranscriptionClient
 import com.github.meetingrecorder.data.WhisperModelStore
 import com.github.meetingrecorder.data.WhisperTranscriptionClient
+import com.github.meetingrecorder.speakers.SpeakerModelStore
+import com.github.meetingrecorder.speakers.SpeakerRepository
+import com.github.meetingrecorder.speakers.SpeakerService
+import com.github.meetingrecorder.speakers.SpeakerTranscriptionClient
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -24,15 +30,56 @@ import java.io.File
  */
 class AppContainer(context: Context) {
 
+    private val speakerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
+    fun prepareSpeakerModels() {
+        speakerScope.launch {
+            try {
+                if (!speakerModels.installed()) speakerModels.download {}
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Retry on the next launch or recording; model availability never blocks recording.
+            }
+        }
+    }
+
+    private fun queueSpeakerAnalysis(dir: File) {
+        speakerScope.launch {
+            try {
+                if (!speakerModels.installed()) speakerModels.download {}
+                val audio = com.github.meetingrecorder.audio.preferredRecording(dir) ?: return@launch
+                speakerService.analyzeAndEnroll(audio, dir)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Saved audio remains usable if optional voiceprint processing fails.
+            }
+        }
+    }
+
     val config: Config = Config(context)
     val qwenModels = QwenModelStore(File(context.noBackupFilesDir, "qwen3-asr-model"))
     val whisperModels = WhisperModelStore(File(context.noBackupFilesDir, "whisper-models"))
 
-    val meetingRepository: MeetingRepository =
-        MeetingRepository(File(documentsDirectory(context), "Meetings"))
+    val speakerModels = SpeakerModelStore(File(context.noBackupFilesDir, "speaker-models"))
+    val speakerRepository = SpeakerRepository(File(context.noBackupFilesDir, "speaker-data"))
+    val meetingRepository: MeetingRepository = MeetingRepository(File(documentsDirectory(context), "Meetings"), speakerRepository::deleteMeetingSamples)
+    val speakerService by lazy { SpeakerService(speakerModels, speakerRepository) }
 
     /** Shared Gemini client; it reads the latest key/model/prompts from [config] on every call. */
     val geminiClient: GeminiClient by lazy { GeminiClient(config) }
+
+    private val selectedTranscription by lazy {
+        SelectedTranscriptionClient(config, geminiClient, AliTranscriptionClient(config), WhisperTranscriptionClient(config, whisperModels), QwenTranscriptionClient(qwenModels))
+    }
+    private val speakerTranscription by lazy { SpeakerTranscriptionClient(speakerService, selectedTranscription) }
+    private val configuredTranscription by lazy {
+        object : TranscriptionClient {
+            override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String =
+                if (speakerModels.installed()) speakerTranscription.transcribe(audioFile, mimeType, onStatus) else selectedTranscription.transcribe(audioFile, mimeType, onStatus)
+        }
+    }
 
     /** Shared processing workflow (transcribe → summarize → title → save) used by the record and detail flows. */
     val meetingProcessor: MeetingProcessor by lazy {
@@ -40,7 +87,9 @@ class AppContainer(context: Context) {
             geminiClient,
             meetingRepository,
             summaryClient = SelectedSummaryClient(config, geminiClient, DeepSeekClient(config)),
-            transcriptionClient = SelectedTranscriptionClient(config, geminiClient, AliTranscriptionClient(config), WhisperTranscriptionClient(config, whisperModels), QwenTranscriptionClient(qwenModels)),
+            transcriptionClient = configuredTranscription,
+            speakerTranscriptionClient = speakerTranscription,
+            onAudioSaved = ::queueSpeakerAnalysis,
         )
     }
 

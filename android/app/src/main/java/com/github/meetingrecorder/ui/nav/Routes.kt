@@ -13,6 +13,9 @@ object Routes {
     const val MEETINGS = "meetings"
 
     const val MEETING_PATH_ARG = "meetingPath"
+    const val MEETING_SPEAKERS_PATTERN = "meeting_speakers/{$MEETING_PATH_ARG}"
+    fun meetingSpeakers(path: String) = "meeting_speakers/${encodeMeetingPath(path)}"
+
     const val MEETING_DETAIL_PATTERN = "meeting_detail/{$MEETING_PATH_ARG}"
 
     /** Builds the meeting-detail route for [absolutePath], encoding slashes as `%2F`. */

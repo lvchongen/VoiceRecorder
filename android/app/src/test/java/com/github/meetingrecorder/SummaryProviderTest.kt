@@ -24,6 +24,12 @@ class SummaryProviderTest {
         val config = Config(context)
         assertEquals(SummaryProvider.GEMINI, config.summaryProvider)
         assertEquals(Config.DEFAULT_DEEPSEEK_MODEL, config.deepSeekModel)
+        assertEquals(com.github.meetingrecorder.data.MeetingTemplate.GENERAL, config.summaryTemplate)
+        assertEquals(com.github.meetingrecorder.data.SummaryDetail.STANDARD, config.summaryDetail)
+        whenever(prefs.getString("summary_template", "GENERAL")).thenReturn("future-template")
+        whenever(prefs.getString("summary_detail", "STANDARD")).thenReturn("future-detail")
+        assertEquals(com.github.meetingrecorder.data.MeetingTemplate.GENERAL, config.summaryTemplate)
+        assertEquals(com.github.meetingrecorder.data.SummaryDetail.STANDARD, config.summaryDetail)
         whenever(prefs.getString("summary_provider", "GEMINI")).thenReturn("future-provider")
         assertEquals(SummaryProvider.GEMINI, config.summaryProvider)
     }

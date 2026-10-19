@@ -472,3 +472,59 @@ Transcripts are saved as soon as transcription completes, before requesting a su
 ### 录完后手动转写
 
 停止录音后仅保存音频，显示“录音已保存”。点击“查看会议”，打开刚才的录音，再手动生成文字和摘要。录音无需提前配置转写或摘要 Key；自动转换倒计时选项已移除。开启实时降噪时仍在录制期间处理并保留两份音频，转写与摘要由用户另外触发。
+
+
+### Android 会议纪要模板与版本
+
+设置 → 常规中可保存默认会议类型（通用会议、项目周会、需求评审、技术评审、客户沟通、头脑风暴）和详细程度（速览、标准、详细）。保留现有摘要语言偏好及自定义提示词；Gemini 与 DeepSeek 共用模板组装规则。类型决定关注点，详细程度决定信息保留量，未讨论的栏目不填充。
+
+会议详情 → 生成纪要，或纪要页右上角 → 重新生成，可临时选择类型、详细程度与语言。有逐字稿时直接复用，没有时先转写录音。生成后先显示预览：**采用此版本**才替换当前 `notes.md`，**保留原版**丢弃本次预览。首次从详情生成也需要采用；录音/导入主流程继续使用默认设置及原有保存流程。预览保留在 ViewModel 内，退出页面或进程结束后不会自动保存。
+
+模型被要求给重要决策和行动项附上 `[P行号]` 与原文已有的 `[HH:MM:SS]`。逐字稿阅读页显示相同的行号，预览中的**查看引用原文**显示该版本生成时的源文本。程序拒绝越界行号和原文不存在的标准时间戳；这只验证引用位置，不证明结论与引用语义一致，也不保证模型为每条结论附上引用。当前仍为全文单次总结，未实现长会议分段或独立事实核验。
+
+采用版本保存在会议目录的 `notes-history/*.json`，记录正文、源逐字稿、所选模板/粒度/语言、模型与自定义提示词。首次替换时自动保留旧 `notes.md`，旧纪要没有可追溯的模型或生成参数，界面会显示未记录。右上角 → **历史版本**可预览并重新采用；恢复不删除其他版本。损坏的历史 JSON 被跳过，归档失败时不会替换当前纪要。`notes.md` 和 `meeting.json` 的既有格式继续兼容 Linux。
+
+模板结构参考（独立编写提示词，非复制模板正文）：
+- [Confluence 通用会议纪要](https://www.atlassian.com/software/confluence/templates/meeting-notes/)：按议题保留讨论、决定及行动项，并记录决定依据。
+- [Confluence 周会记录](https://www.atlassian.com/software/confluence/templates/weekly-meeting-notes)：关注持续跟进、决策和下一步。
+- [Notion 会议模板分类](https://www.notion.com/templates/category/meetings)：提供不同会议场景的组织参考。
+
+验证：模板/粒度组合、原文插值、引用范围、HTTP 参数、配置兼容、版本恢复、保存失败保护以及预览采用/丢弃/生成失败的 JVM 测试；Compose 测试覆盖原有任务进度和新选项/预览操作。离线测试不代表真实模型的内容质量、真机布局或长会议效果验证。
+
+### Android 自动声纹与管理
+
+声纹识别默认可用，无需单独开启。首次启动会在后台准备约 28 MiB 的模型；录音和转写不等待下载。录音保存后自动在本机分析 A/B/C 并入库，已有清晰匹配会沿用档案，未匹配声音保存为“未命名 1、2…”。不再弹出命名确认、选择样本或额外保存步骤。
+
+设置 → **声纹**（也可从会议右上角菜单 → **声纹管理**）提供：
+- **试听、命名、删除**：管理自动收集的档案，删除不影响会议录音和已保存的文字。
+- **更新**：选择只包含该说话人的清晰录音，追加新样本；保留已有样本，支持不同发声状态。
+- **添加**：导入单人录音，自动建立或匹配档案。样本支持逐份试听和移除。
+
+会议页保留纪要、逐字稿、录音的原有布局，录音结束后直接保存。声纹分析、存储或模型准备失败不会阻塞正常转写和保存。分人转写遇到局部空识别，会使用完整录音重试，不再把一个空片段视为整场没有语音；认证、网络等其他错误仍正常报告，取消操作不重试。
+
+本场按首次发言分配 A/B/C，跨会议只复用声纹档案；匹配阈值是启发式而非准确率保证。每人每场最多 3 份 2–6 秒清晰样本，每份档案最多 20 份样本；过短、过静、明显削波及检测到的重叠片段不入库。自动匹配要求相似度至少 0.8，且领先第二候选至少 0.1；本场不同标签不关联同一档案。匹配不足会建立新档案，可在管理页修正命名/删除。噪声、相似声音、感冒/嘶哑仍可能导致错分或重复建档。删除的档案不会被同一份缓存分析自动重新创建。
+
+模型、声纹向量和试听片段放在 `noBackupFilesDir`；公共会议目录只新增一个 `speakers.json` 分析引用。逐字稿与纪要保持原有格式。复制会议不会共享另一场仍存在会议的身份；重命名会议后可继续读取关联。跨设备复制或清除应用数据后，需要重新分析本地说话人。模型版本不同的声纹不会相互匹配。
+
+模型来源与许可：
+- [pyannote segmentation 3.0 ONNX INT8](https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/tree/9403a6902bb58e3d5ae8c7e77c3422de279db2e0)，MIT（CNRS）；附带许可证位于 assets/licenses/pyannote-segmentation-MIT.txt。
+- [3D-Speaker CAMPPlus 中英模型](https://huggingface.co/csukuangfj/speaker-embedding-models/tree/0743f301363dec56491a490f6d6cbc9d67f9a3bf)，[上游 3D-Speaker](https://github.com/modelscope/3D-Speaker)，附带其 Apache-2.0 许可证；实际模型文件名与 SHA 固定在 SpeakerModelStore.kt。
+- [sherpa-onnx Kotlin 分人示例](https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.8/kotlin-api-examples/test_offline_speaker_diarization.kt)。
+
+测试覆盖编号、跨窗口毫秒时间线、重叠区间、质量筛选、多个声纹样本、模型不兼容、每场隔离、自动建档/匹配/删除后不重建、追加/删除/试听文件、空片段整段重试、失败回滚与精简管理界面。`SpeakerDeviceTest` 为显式开启的隔离真机测试，只使用暂存的公开双人音频，不录制麦克风、不调用云 API、不修改用户会议。运行示例：
+
+```bash
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+# 在应用 cache/speaker-device-test/models/ 暂存两个固定模型，
+# 在 cache/speaker-device-test/two-speakers.wav 暂存上游公开样本后运行：
+adb shell am instrument -w -e speakerTest true -e class com.github.meetingrecorder.SpeakerDeviceTest com.github.meetingrecorder.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+双人测试音频为 [上游 1-two-speakers-en.wav](https://huggingface.co/csukuangfj/speaker-embedding-models/blob/0743f301363dec56491a490f6d6cbc9d67f9a3bf/1-two-speakers-en.wav)，512044 bytes，SHA-256 `f1c877dc01595e28be7147bf2fe38e5268147a868bf3fdb5c37b97f5940e21f3`；只暂存到测试缓存，不打包进 APK。
+
+Android CI 和发布工作流在 Gradle 配置前接受 SDK（含预览）许可并安装项目指定的 NDK 30.0.16138531 / CMake 4.1.2，避免干净 runner 在 ktlint 阶段因缺少原生工具链许可失败。
+
+### Android 模板提示词
+
+设置 → 提示词中选择会议类型，会显示该模板独立的中文摘要提示词；修改后点击保存，可恢复当前模板默认值。生成时按实际所选模板读取配置，会议内临时选择也生效。转写与标题提示词独立于摘要模板。全局补充要求默认留空，兼容保留旧版自定义摘要提示词；模板自定义按枚举名存储，留空使用内置默认。摘要版本记录该模板提示词与全局补充要求。测试覆盖模板切换、独立持久化、恢复默认和原文插值。

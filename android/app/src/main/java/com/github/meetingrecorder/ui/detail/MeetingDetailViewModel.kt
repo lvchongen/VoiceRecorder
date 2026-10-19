@@ -7,8 +7,13 @@ import com.github.meetingrecorder.audio.preferredRecording
 import com.github.meetingrecorder.data.Config
 import com.github.meetingrecorder.data.MeetingMeta
 import com.github.meetingrecorder.data.MeetingProcessor
+import com.github.meetingrecorder.data.SummaryOptions
+import com.github.meetingrecorder.data.SummaryProvider
+import com.github.meetingrecorder.data.SummaryVersion
+import com.github.meetingrecorder.data.summaryOptions
 import com.github.meetingrecorder.util.extensionToMimeType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -34,10 +39,46 @@ sealed interface GenState {
 class MeetingDetailViewModel(
     private val config: Config,
     private val processor: MeetingProcessor,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
 
     private val _transcript = MutableStateFlow<String?>(null)
     val transcript: StateFlow<String?> = _transcript.asStateFlow()
+
+    val defaultSummaryOptions get() = config.summaryOptions()
+    private val _preview = MutableStateFlow<SummaryVersion?>(null)
+    val preview = _preview.asStateFlow()
+    private val _versions = MutableStateFlow<List<SummaryVersion>>(emptyList())
+    val versions = _versions.asStateFlow()
+
+    fun dismissPreview() {
+        _preview.value = null
+    }
+    fun previewVersion(version: SummaryVersion) {
+        if (_genState.value !is GenState.Processing) _preview.value = version
+    }
+
+    fun adoptPreview() {
+        if (_genState.value is GenState.Processing) return
+        val version = _preview.value ?: return
+        val dir = meetingDir ?: return
+        generationJob = viewModelScope.launch {
+            _genState.value = GenState.Processing("正在保存纪要…")
+            try {
+                processor.adoptSummary(dir, version)
+                _notes.value = version.notes
+                _preview.value = null
+                _versions.value = processor.summaryVersions(dir)
+                maybeGenerateTitle(version.notes)
+                processor.saveMetadata(dir, currentTitle, durationSeconds)
+                _genState.value = GenState.Idle
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _genState.value = GenState.Error(e.message ?: "保存失败")
+            }
+        }
+    }
 
     private val _notes = MutableStateFlow<String?>(null)
     val notes: StateFlow<String?> = _notes.asStateFlow()
@@ -102,9 +143,13 @@ class MeetingDetailViewModel(
         _currentTime.value = "00:00"
         val dir = File(meetingPath)
         meetingDir = dir
+        _preview.value = null
+        _versions.value = emptyList()
         _genState.value = GenState.Idle
-        viewModelScope.launch {
-            val loaded = withContext(Dispatchers.IO) {
+        _transcript.value = null
+        _notes.value = null
+        generationJob = viewModelScope.launch {
+            val loaded = withContext(ioDispatcher) {
                 val transcript = File(dir, "transcript.md").takeIf { it.exists() }?.readText()
                 val notes = File(dir, "notes.md").takeIf { it.exists() }?.readText()
 
@@ -136,6 +181,7 @@ class MeetingDetailViewModel(
                 )
             }
 
+            _versions.value = processor.summaryVersions(dir)
             _transcript.value = loaded.transcript
             _notes.value = loaded.notes
             currentTitle = loaded.title
@@ -158,8 +204,8 @@ class MeetingDetailViewModel(
         }
     }
 
-    /** Transcribe the audio, then summarize — writes transcript.md and notes.md. Requires audio. */
-    fun generateTranscriptAndNotes() {
+    /** Persist the transcript, then stage notes for explicit adoption. Requires audio. */
+    fun generateTranscriptAndNotes(options: SummaryOptions = defaultSummaryOptions, withSpeakers: Boolean = false) {
         if (_genState.value is GenState.Processing) return
         val dir = meetingDir ?: return
         val audio = audioFile ?: return
@@ -170,18 +216,22 @@ class MeetingDetailViewModel(
         generationJob = viewModelScope.launch {
             _genState.value = GenState.Processing("Starting…")
             try {
+                val provider = config.summaryProvider
+                val model = if (provider == SummaryProvider.DEEPSEEK) config.deepSeekModel else config.model
+                val prompt = config.templatePrompt(options.template) + "\n\n全局补充要求：\n" + config.summarizationPrompt
                 val result = processor.transcribeAndSummarize(
                     audio,
                     extensionToMimeType(audio.extension),
                     meetingDir = dir,
                     onTranscriptSaved = { _transcript.value = it },
+                    summaryOptions = options,
+                    saveNotesCheckpoint = false,
+                    withSpeakers = withSpeakers,
                 ) {
                     _genState.value = GenState.Processing(it)
                 }
-                maybeGenerateTitle(result.notes)
-                processor.saveResults(dir, result.transcript, result.notes, currentTitle, durationSeconds)
+                _preview.value = SummaryVersion(notes = result.notes, sourceTranscript = result.transcript, options = options, provider = provider.name, model = model, prompt = prompt)
                 _transcript.value = result.transcript
-                _notes.value = result.notes
                 _genState.value = GenState.Idle
             } catch (e: CancellationException) {
                 throw e // a cancelled job (e.g. reload) must not surface as an error
@@ -194,12 +244,12 @@ class MeetingDetailViewModel(
     /** Generate notes when none exist yet, reusing the already-loaded transcript. */
     fun generateNotes() = runNotesGeneration()
 
-    /** Re-run notes generation, overwriting the existing notes.md (reuses the transcript). */
-    fun regenerateNotes() = runNotesGeneration()
+    /** Reuse the transcript and stage a preview; adoption is an explicit separate action. */
+    fun regenerateNotes(options: SummaryOptions = defaultSummaryOptions) = runNotesGeneration(options)
 
-    private fun runNotesGeneration() {
+    private fun runNotesGeneration(options: SummaryOptions = defaultSummaryOptions) {
         if (_genState.value is GenState.Processing) return
-        val dir = meetingDir ?: return
+        if (meetingDir == null) return
         val transcript = _transcript.value ?: return
         config.processingError(needsTranscription = false)?.let {
             _genState.value = GenState.Error(it)
@@ -208,12 +258,12 @@ class MeetingDetailViewModel(
         generationJob = viewModelScope.launch {
             _genState.value = GenState.Processing("Generating meeting notes…")
             try {
-                val notes = processor.summarizeTranscript(transcript) { _genState.value = GenState.Processing(it) }
-                processor.saveNotes(dir, notes, currentTitle, durationSeconds)
-                _notes.value = notes
-                maybeGenerateTitle(notes)
-                processor.saveNotes(dir, notes, currentTitle, durationSeconds)
-                _notes.value = notes
+                val provider = config.summaryProvider
+                val model = if (provider == SummaryProvider.DEEPSEEK) config.deepSeekModel else config.model
+                val prompt = config.templatePrompt(options.template) + "\n\n全局补充要求：\n" + config.summarizationPrompt
+                val notes = processor.previewSummary(transcript, options) { _genState.value = GenState.Processing(it) }
+                check(notes.isNotBlank()) { "模型返回了空纪要，请重试。" }
+                _preview.value = SummaryVersion(notes = notes, sourceTranscript = transcript, options = options, provider = provider.name, model = model, prompt = prompt)
                 _genState.value = GenState.Idle
             } catch (e: CancellationException) {
                 throw e // a cancelled job (e.g. reload) must not surface as an error
