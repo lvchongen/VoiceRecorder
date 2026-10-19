@@ -91,6 +91,16 @@ class SpeakerViewModel(
 
     fun deleteModels() = action("正在删除模型…") { service.models.delete() }
 
+    /** Takes ownership of the dialog's private temporary recording, including cancellation cleanup. */
+    fun updateRecordedVoiceSample(audio: File, profileId: String) {
+        if (_state.value.busy) {
+            audio.parentFile?.deleteRecursively()
+            return
+        }
+        importVoiceSample(requireNotNull(audio.parentFile?.parentFile), { audio.inputStream() }, profileId)
+        job?.invokeOnCompletion { audio.parentFile?.deleteRecursively() }
+    }
+
     fun importVoiceSample(cacheDir: File, openStream: () -> java.io.InputStream?, profileId: String?) {
         stopSample()
         action("正在更新声纹…") {
@@ -101,7 +111,7 @@ class SpeakerViewModel(
                     openStream()?.use { input -> audio.outputStream().use(input::copyTo) } ?: error("无法读取所选录音")
                     if (!service.models.installed()) service.models.download {}
                     val meeting = service.analyze(audio, directory)
-                    check(meeting.speakers.size == 1 && meeting.speakers.single().samples.isNotEmpty()) { "请选择只包含这位说话人的清晰录音" }
+                    check(meeting.speakers.size == 1 && meeting.speakers.single().samples.isNotEmpty()) { "请提供只包含这位说话人的清晰录音" }
                     if (profileId == null) {
                         repository.autoEnroll(directory)
                     } else {

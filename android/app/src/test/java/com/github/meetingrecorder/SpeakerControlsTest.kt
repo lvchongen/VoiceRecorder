@@ -60,4 +60,20 @@ class SpeakerControlsTest {
         compose.mainClock.advanceTimeBy(500)
         verify(vm).deleteProfile(profile.id)
     }
+
+    @Test fun `update opens direct recording instead of a file picker`() {
+        val vm = mock<SpeakerViewModel>()
+        val profile = VoiceProfile(name = "张三", samples = listOf(sample))
+        whenever(vm.state).thenReturn(MutableStateFlow(SpeakerUiState(profiles = listOf(profile), modelsReady = true)))
+        compose.setContent { MaterialTheme { VoiceprintPanel(vm) } }
+        compose.onNodeWithText("更新").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("录制声纹").assertIsDisplayed()
+        compose.onNodeWithText("为「张三」补充声音样本").assertIsDisplayed()
+        compose.onNodeWithText("开始录制").assertIsDisplayed()
+        compose.onNodeWithText("取消").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("录制声纹").assertDoesNotExist()
+        verify(vm, never()).updateRecordedVoiceSample(any(), any())
+    }
 }

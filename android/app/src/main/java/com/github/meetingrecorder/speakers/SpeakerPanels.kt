@@ -34,12 +34,22 @@ fun VoiceprintPanel(viewModel: SpeakerViewModel = viewModel(factory = appViewMod
     DisposableEffect(viewModel) { onDispose { viewModel.stopSample() } }
     val state by viewModel.state.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    var importTarget by remember { mutableStateOf<String?>(null) }
     val importAudio = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) viewModel.importVoiceSample(context.cacheDir, { context.contentResolver.openInputStream(uri) }, importTarget)
+        if (uri != null) viewModel.importVoiceSample(context.cacheDir, { context.contentResolver.openInputStream(uri) }, null)
     }
     var renaming by remember { mutableStateOf<VoiceProfile?>(null) }
+    var recordingFor by remember { mutableStateOf<VoiceProfile?>(null) }
     var deleteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    recordingFor?.let { profile ->
+        VoiceSampleRecordingDialog(
+            name = profile.name,
+            onDismiss = { recordingFor = null },
+            onRecorded = { audio ->
+                recordingFor = null
+                viewModel.updateRecordedVoiceSample(audio, profile.id)
+            },
+        )
+    }
     renaming?.let { profile ->
         var draft by remember(profile.id) { mutableStateOf(profile.name) }
         AlertDialog(onDismissRequest = { renaming = null }, title = { Text("修改声纹姓名") }, text = {
@@ -68,7 +78,6 @@ fun VoiceprintPanel(viewModel: SpeakerViewModel = viewModel(factory = appViewMod
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("声纹档案", style = MaterialTheme.typography.titleMedium)
                     TextButton(onClick = {
-                        importTarget = null
                         importAudio.launch("audio/*")
                     }, enabled = !state.busy) { Text("添加") }
                 }
@@ -87,8 +96,8 @@ fun VoiceprintPanel(viewModel: SpeakerViewModel = viewModel(factory = appViewMod
                         }
                         TextButton(onClick = { renaming = profile }, enabled = !state.busy) { Text("命名") }
                         TextButton(onClick = {
-                            importTarget = profile.id
-                            importAudio.launch("audio/*")
+                            viewModel.stopSample()
+                            recordingFor = profile
                         }, enabled = !state.busy) { Text("更新") }
                         TextButton(onClick = { deleteAction = { viewModel.deleteProfile(profile.id) } }, enabled = !state.busy) { Text("删除声纹") }
                     }
