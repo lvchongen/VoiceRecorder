@@ -18,7 +18,6 @@ fun AppNavGraph() {
             MainScreen(
                 onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                 onNavigateToMeetings = { navController.navigate(Routes.MEETINGS) },
-                onNavigateToSpeakers = { path -> navController.navigate(Routes.meetingSpeakers(path)) },
             )
         }
         composable(Routes.SETTINGS) {

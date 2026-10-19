@@ -77,7 +77,7 @@ class QwenTranscriptionClient(
                         offset = end
                     }
                 }
-                check(output.isNotBlank()) { "未识别到语音，请检查音频" }
+                if (output.isBlank()) throw NoSpeechDetectedException("未识别到语音，请检查音频")
                 output.toString().trim()
             }
         }

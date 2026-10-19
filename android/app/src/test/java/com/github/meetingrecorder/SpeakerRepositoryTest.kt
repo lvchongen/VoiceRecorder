@@ -26,6 +26,28 @@ class SpeakerRepositoryTest {
         return meeting
     }
 
+    @Test fun `automatic enrollment matches across meetings and respects deletion`() {
+        val repo = SpeakerRepository(temp.newFolder())
+        val first = temp.newFolder()
+        fixture(repo, first)
+        val a = repo.autoEnroll(first)
+        val profile = repo.profiles().single()
+        assertEquals("未命名 1", profile.name)
+        assertEquals(profile.id, a.speakers.single().profileId)
+        repo.renameProfile(profile.id, "张三")
+        val next = temp.newFolder()
+        fixture(repo, next)
+        val b = repo.autoEnroll(next)
+        assertEquals(profile.id, b.speakers.single().profileId)
+        assertEquals("张三", b.speakers.single().name)
+        assertEquals(2, repo.profiles().single().samples.size)
+        repo.autoEnroll(next)
+        assertEquals(2, repo.profiles().single().samples.size)
+        repo.deleteProfile(profile.id)
+        repo.autoEnroll(next)
+        assertTrue(repo.profiles().isEmpty())
+    }
+
     @Test fun `manual names remain per meeting and never enroll implicitly`() {
         val repo = SpeakerRepository(temp.newFolder())
         val a = temp.newFolder()

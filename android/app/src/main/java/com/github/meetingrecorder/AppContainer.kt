@@ -20,6 +20,7 @@ import com.github.meetingrecorder.speakers.SpeakerModelStore
 import com.github.meetingrecorder.speakers.SpeakerRepository
 import com.github.meetingrecorder.speakers.SpeakerService
 import com.github.meetingrecorder.speakers.SpeakerTranscriptionClient
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -28,6 +29,34 @@ import java.io.File
  * constructor injection through [appViewModelFactory] instead of casting `application`.
  */
 class AppContainer(context: Context) {
+
+    private val speakerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
+    fun prepareSpeakerModels() {
+        speakerScope.launch {
+            try {
+                if (!speakerModels.installed()) speakerModels.download {}
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Retry on the next launch or recording; model availability never blocks recording.
+            }
+        }
+    }
+
+    private fun queueSpeakerAnalysis(dir: File) {
+        speakerScope.launch {
+            try {
+                if (!speakerModels.installed()) speakerModels.download {}
+                val audio = com.github.meetingrecorder.audio.preferredRecording(dir) ?: return@launch
+                speakerService.analyzeAndEnroll(audio, dir)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Saved audio remains usable if optional voiceprint processing fails.
+            }
+        }
+    }
 
     val config: Config = Config(context)
     val qwenModels = QwenModelStore(File(context.noBackupFilesDir, "qwen3-asr-model"))
@@ -48,7 +77,7 @@ class AppContainer(context: Context) {
     private val configuredTranscription by lazy {
         object : TranscriptionClient {
             override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String =
-                if (config.speakerSeparationEnabled && speakerModels.installed()) speakerTranscription.transcribe(audioFile, mimeType, onStatus) else selectedTranscription.transcribe(audioFile, mimeType, onStatus)
+                if (speakerModels.installed()) speakerTranscription.transcribe(audioFile, mimeType, onStatus) else selectedTranscription.transcribe(audioFile, mimeType, onStatus)
         }
     }
 
@@ -60,6 +89,7 @@ class AppContainer(context: Context) {
             summaryClient = SelectedSummaryClient(config, geminiClient, DeepSeekClient(config)),
             transcriptionClient = configuredTranscription,
             speakerTranscriptionClient = speakerTranscription,
+            onAudioSaved = ::queueSpeakerAnalysis,
         )
     }
 

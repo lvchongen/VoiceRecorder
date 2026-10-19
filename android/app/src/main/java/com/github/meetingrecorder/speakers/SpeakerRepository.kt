@@ -81,7 +81,29 @@ class SpeakerRepository(private val root: File) {
         atomicText(File(dir, "profile.json"), speakerJson.encodeToString(VoiceProfile.serializer(), profile.copy(name = name)))
     }
 
-    /** Called only after user confirmation. Copy clips so profile samples survive meeting deletion. */
+    /** Match conservatively; enroll clean unmatched voices without adding UI steps. */
+    @Synchronized fun autoEnroll(dir: File): SpeakerMeeting {
+        var meeting = requireNotNull(readMeeting(dir))
+        val used = meeting.speakers.mapNotNull { it.profileId }.toMutableSet()
+        for (speaker in meeting.speakers) {
+            // A deleted profile stays deleted; rereading a cached meeting must not recreate it.
+            if (speaker.profileId != null) continue
+            val samples = speaker.samples.filter {
+                it.model == SpeakerModelStore.EMBEDDING.sha256 && normalizedEmbedding(it.embedding) != null && meetingSample(meeting, it).isFile
+            }
+            if (samples.isEmpty()) continue
+            val profiles = profiles()
+            val candidates = voiceCandidates(samples, profiles.filter { it.id !in used })
+            val best = candidates.firstOrNull()
+            val match = best?.takeIf { it.similarity >= 0.8f && it.similarity - (candidates.getOrNull(1)?.similarity ?: -1f) >= 0.1f }?.profile
+            val name = match?.name ?: generateSequence(1) { it + 1 }.map { "未命名 $it" }.first { name -> profiles.none { it.name == name } }
+            meeting = confirm(dir, speaker.label, name, match?.id, saveVoiceprint = match == null || match.samples.size < 20, sampleIds = setOf(samples.first().id))
+            meeting.speakers.first { it.label == speaker.label }.profileId?.let(used::add)
+        }
+        return meeting
+    }
+
+    /** Copy clips so profile samples survive meeting deletion. */
     @Synchronized fun confirm(
         dir: File,
         label: String,
