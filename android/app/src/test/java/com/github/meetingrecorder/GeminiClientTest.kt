@@ -310,6 +310,31 @@ class GeminiClientTest {
         assertEquals("Weekly Standup", result)
     }
 
+    @Test
+    fun `explicit options reach Gemini with numbered evidence and no contradictory default brevity`() = runTest {
+        server.enqueue(contentResponse("Proposal [P1]"))
+        client.summarizeWithOptions(
+            "A: propose B",
+            com.github.meetingrecorder.data.SummaryOptions(
+                com.github.meetingrecorder.data.MeetingTemplate.TECHNICAL,
+                com.github.meetingrecorder.data.SummaryDetail.DETAILED,
+                "Chinese",
+            ),
+        )
+        val request = org.json.JSONObject(server.takeRequest().body.readUtf8())
+        val prompt = request.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text")
+        assertTrue(prompt.contains("TECHNICAL"))
+        assertTrue(prompt.contains("DETAILED"))
+        assertTrue(prompt.contains("[P1] A: propose B"))
+        assertFalse(prompt.contains("Keep notes concise."))
+    }
+
+    @Test
+    fun `invalid Gemini source references are rejected`() = runTest {
+        server.enqueue(contentResponse("Decision [P20]"))
+        assertTrue(runCatching { client.summarize("one line") }.isFailure)
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

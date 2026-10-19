@@ -36,12 +36,12 @@ class DeepSeekClient(
         .callTimeout(240, TimeUnit.SECONDS)
         .build()
 
-    override suspend fun summarize(transcript: String, onStatus: (String) -> Unit): String {
-        require(transcript.isNotBlank()) { "The transcript is empty. Transcribe the audio first." }
+    override suspend fun summarize(transcript: String, onStatus: (String) -> Unit): String =
+        summarizeWithOptions(transcript, config.summaryOptions(), onStatus)
+
+    override suspend fun summarizeWithOptions(transcript: String, options: SummaryOptions, onStatus: (String) -> Unit): String {
         onStatus("Generating meeting notes with DeepSeek…")
-        return complete(
-            summaryLanguageInstruction(config.summaryLanguage) + "\n\n" + renderPrompt(config.summarizationPrompt.ifBlank { Config.DEFAULT_SUMMARIZATION_PROMPT }, "transcript", transcript),
-        )
+        return validateSummaryReferences(complete(buildSummaryPrompt(transcript, options, config.summarizationPrompt)), transcript)
     }
 
     override suspend fun generateTitle(notes: String, onStatus: (String) -> Unit): String {

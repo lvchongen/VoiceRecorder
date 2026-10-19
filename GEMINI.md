@@ -220,3 +220,14 @@ Device validation on 2026-10-19: PKG110/API 35 passed public-fixture JNI/AAC rou
 ## Android manual processing after recording
 
 Stopping a recording finalizes audio and meeting metadata, removes the recording lock, and shows AudioSaved with a library shortcut. It never invokes ASR or summarization. Recording does not require processing credentials. The former processing-countdown UI/state is removed; its legacy preference remains harmless and is ignored. Detail-screen generate actions explicitly start processing later. Existing import-and-process remains a user-initiated operation. RecordingStopDecisionTest and MeetingProcessorTest cover save-only dispatch, library visibility, audio preservation and zero network requests.
+
+
+## Android summary templates and history
+
+`data/SummaryOptions.kt` defines six meeting types, three detail levels and the shared Gemini/DeepSeek prompt builder. `Config.summaryTemplate` / `summaryDetail` default to GENERAL/STANDARD; existing language and custom prompts remain intact. Source line IDs are added in memory, never written into transcript.md. Mechanical reference validation rejects out-of-range P IDs and absent bracketed HH:MM:SS timestamps; do not describe this as factual verification.
+
+`MeetingDetailViewModel` stages a `SummaryVersion` preview for both notes-only and audio-first generation. Only adoption writes notes.md via `SummaryHistory`; dismissing or generation failure preserves prior notes. `SummaryHistory` appends JSON snapshots under each meeting's notes-history/, archives legacy notes before replacement, preserves source/options/provider/model/custom prompt, and restores through the same adoption path. Encode defaults explicitly: generated IDs and timestamps must survive round-trip serialization. Keep notes.md and meeting.json compatible with Linux. Recording/import main flows still use the original checkpoints and default options. Unsaved previews are ViewModel state, not durable drafts.
+
+`SummaryOptionsEditor` reuses Material 3 exposed dropdowns in Settings and the detail dialog. Preview and source evidence reuse the native Markdown viewer. Tests: SummaryOptionsTest, SummaryHistoryTest, SummaryPreviewTest, provider mock HTTP tests and Compose detail tests. ViewModel IO dispatcher is injectable for deterministic load/preview/adoption tests. No live-model factual quality or device inference claims follow from JVM success.
+
+Speaker embeddings and cross-meeting identity management are planned only; see README's voiceprint requirements. Do not represent existing Gemini speaker labels as verified voiceprints.

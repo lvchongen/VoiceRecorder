@@ -57,19 +57,16 @@ class GeminiClient(
         )
     }
 
-    override suspend fun summarize(
+    override suspend fun summarize(transcript: String, onStatus: (String) -> Unit): String =
+        summarizeWithOptions(transcript, config.summaryOptions(), onStatus)
+
+    override suspend fun summarizeWithOptions(
         transcript: String,
+        options: SummaryOptions,
         onStatus: (String) -> Unit,
     ): String = withContext(Dispatchers.IO) {
         onStatus("Generating meeting notes…")
-        val summarizeTemplate = summaryLanguageInstruction(config.summaryLanguage) + "\n\n" + config.summarizationPrompt.ifBlank { Config.DEFAULT_SUMMARIZATION_PROMPT }
-        generateContent(
-            prompt = if (summarizeTemplate.contains("{transcript}")) {
-                summarizeTemplate.replace("{transcript}", transcript)
-            } else {
-                "$summarizeTemplate\n\n$transcript"
-            },
-        )
+        validateSummaryReferences(generateContent(prompt = buildSummaryPrompt(transcript, options, config.summarizationPrompt)), transcript)
     }
 
     override suspend fun generateTitle(

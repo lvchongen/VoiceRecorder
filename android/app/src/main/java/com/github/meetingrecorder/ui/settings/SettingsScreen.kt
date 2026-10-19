@@ -119,6 +119,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
     var aliBaseUrlDraft by remember { mutableStateOf(aliBaseUrl) }
     val aliModel by viewModel.aliModel.collectAsState()
     var aliModelDraft by remember { mutableStateOf(aliModel) }
+    var summaryOptionsDraft by remember { mutableStateOf(viewModel.summaryOptions) }
     val summaryLanguage by viewModel.summaryLanguage.collectAsState()
     var summaryLanguageDraft by remember { mutableStateOf(summaryLanguage) }
     val summaryProvider by viewModel.summaryProvider.collectAsState()
@@ -243,6 +244,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
         }
 
         HorizontalDivider()
+        com.github.meetingrecorder.ui.detail.SummaryOptionsEditor(summaryOptionsDraft, { summaryOptionsDraft = it }, showLanguage = false)
         Text("摘要语言", style = MaterialTheme.typography.titleMedium)
         listOf("Bilingual" to "中英双语摘要", "Chinese" to "中文摘要", "Original" to "原语言摘要").forEach { (value, label) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -366,6 +368,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
                 viewModel.setAliApiKey(aliApiKeyDraft.trim())
                 viewModel.setAliBaseUrl(aliBaseUrlDraft.trim())
                 viewModel.setAliModel(aliModelDraft.trim())
+                viewModel.setSummaryOptions(summaryOptionsDraft)
                 viewModel.setSummaryLanguage(summaryLanguageDraft)
                 viewModel.setSummaryProvider(providerDraft)
                 viewModel.setDeepSeekApiKey(deepSeekKeyDraft)
