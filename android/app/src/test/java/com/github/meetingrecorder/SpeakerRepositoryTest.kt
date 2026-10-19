@@ -30,7 +30,9 @@ class SpeakerRepositoryTest {
         val repo = SpeakerRepository(temp.newFolder())
         val first = temp.newFolder()
         fixture(repo, first)
+        val beforeEnrollment = repo.profileChanges.value
         val a = repo.autoEnroll(first)
+        assertTrue(repo.profileChanges.value > beforeEnrollment)
         val profile = repo.profiles().single()
         assertEquals("未命名 1", profile.name)
         assertEquals(profile.id, a.speakers.single().profileId)
@@ -43,7 +45,9 @@ class SpeakerRepositoryTest {
         assertEquals(2, repo.profiles().single().samples.size)
         repo.autoEnroll(next)
         assertEquals(2, repo.profiles().single().samples.size)
+        val beforeDeletion = repo.profileChanges.value
         repo.deleteProfile(profile.id)
+        assertTrue(repo.profileChanges.value > beforeDeletion)
         repo.autoEnroll(next)
         assertTrue(repo.profiles().isEmpty())
     }
