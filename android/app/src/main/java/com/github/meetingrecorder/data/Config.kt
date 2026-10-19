@@ -62,6 +62,18 @@ class Config(context: Context) {
             prefs.edit().putString("transcription_provider", value.name).apply()
         }
 
+    var summaryTemplate: MeetingTemplate
+        get() = MeetingTemplate.entries.find { it.name == prefs.getString("summary_template", "GENERAL") } ?: MeetingTemplate.GENERAL
+        set(value) {
+            prefs.edit().putString("summary_template", value.name).apply()
+        }
+
+    var summaryDetail: SummaryDetail
+        get() = SummaryDetail.entries.find { it.name == prefs.getString("summary_detail", "STANDARD") } ?: SummaryDetail.STANDARD
+        set(value) {
+            prefs.edit().putString("summary_detail", value.name).apply()
+        }
+
     var summaryLanguage: String
         get() = prefs.getString("summary_language", "Bilingual") ?: "Bilingual"
         set(value) {

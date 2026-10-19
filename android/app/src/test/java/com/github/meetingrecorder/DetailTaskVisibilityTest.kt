@@ -3,7 +3,6 @@ package com.github.meetingrecorder
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.github.meetingrecorder.ui.detail.GenState
@@ -21,11 +20,14 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class DetailTaskVisibilityTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = RobolectricComposeRule()
 
     @Test fun `Qwen progress stays visible when switching to audio and transcript`() {
         val vm = mock<MeetingDetailViewModel>()
         val transcript = MutableStateFlow<String?>(null)
+        whenever(vm.defaultSummaryOptions).thenReturn(com.github.meetingrecorder.data.SummaryOptions())
+        whenever(vm.preview).thenReturn(MutableStateFlow(null))
+        whenever(vm.versions).thenReturn(MutableStateFlow(emptyList()))
         whenever(vm.transcript).thenReturn(transcript)
         whenever(vm.notes).thenReturn(MutableStateFlow(null))
         whenever(vm.hasOriginal).thenReturn(MutableStateFlow(false))

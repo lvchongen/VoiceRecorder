@@ -6,7 +6,6 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
 
 private const val TAG = "MeetingProcessor"
 
@@ -37,13 +36,15 @@ class MeetingProcessor(
         mimeType: String = "audio/mp4",
         meetingDir: File = requireNotNull(audioFile.parentFile),
         onTranscriptSaved: (String) -> Unit = {},
+        summaryOptions: SummaryOptions? = null,
+        saveNotesCheckpoint: Boolean = true,
         onStatus: (String) -> Unit = {},
     ): ProcessingResult {
         val transcript = transcriptionClient.transcribe(audioFile, mimeType, onStatus)
         saveCheckpoint(meetingDir, "transcript.md", transcript)
         onTranscriptSaved(transcript)
-        val notes = summaryClient.summarize(transcript, onStatus)
-        saveCheckpoint(meetingDir, "notes.md", notes)
+        val notes = if (summaryOptions == null) summaryClient.summarize(transcript, onStatus) else summaryClient.summarizeWithOptions(transcript, summaryOptions, onStatus)
+        if (saveNotesCheckpoint) saveCheckpoint(meetingDir, "notes.md", notes)
         return ProcessingResult(transcript, notes)
     }
 
@@ -52,6 +53,19 @@ class MeetingProcessor(
         transcript: String,
         onStatus: (String) -> Unit = {},
     ): String = summaryClient.summarize(transcript, onStatus)
+
+    suspend fun previewSummary(transcript: String, options: SummaryOptions, onStatus: (String) -> Unit = {}): String =
+        summaryClient.summarizeWithOptions(transcript, options, onStatus)
+
+    suspend fun summaryVersions(dir: File): List<SummaryVersion> = withContext(ioDispatcher) { SummaryHistory().list(dir) }
+
+    suspend fun adoptSummary(dir: File, version: SummaryVersion) = withContext(ioDispatcher) {
+        SummaryHistory().adopt(dir, version)
+    }
+
+    suspend fun saveMetadata(dir: File, title: String?, durationSeconds: Int?) = withContext(ioDispatcher) {
+        store.saveMeetingMeta(dir, title, durationSeconds)
+    }
 
     /**
      * Best-effort title generation: returns the trimmed title, or null on failure (logged, never
@@ -73,18 +87,7 @@ class MeetingProcessor(
         writeAtomically(File(dir, name), text)
     }
 
-    private fun writeAtomically(target: File, text: String) {
-        val temporary = File.createTempFile(".${target.name}", ".tmp", target.parentFile)
-        try {
-            FileOutputStream(temporary).use {
-                it.write(text.toByteArray(Charsets.UTF_8))
-                it.fd.sync()
-            }
-            check(temporary.renameTo(target)) { "Could not save ${target.name}" }
-        } finally {
-            temporary.delete()
-        }
-    }
+    private fun writeAtomically(target: File, text: String) = atomicText(target, text)
 
     /** Finalize a recording without starting transcription or summary requests. */
     suspend fun saveAudioOnly(meetingDir: File, title: String?, durationSeconds: Int?) = withContext(ioDispatcher) {

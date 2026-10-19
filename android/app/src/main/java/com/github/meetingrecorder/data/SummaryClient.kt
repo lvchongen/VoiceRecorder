@@ -2,6 +2,8 @@ package com.github.meetingrecorder.data
 
 interface SummaryClient {
     suspend fun summarize(transcript: String, onStatus: (String) -> Unit = {}): String
+    suspend fun summarizeWithOptions(transcript: String, options: SummaryOptions, onStatus: (String) -> Unit = {}): String =
+        summarize(transcript, onStatus)
     suspend fun generateTitle(notes: String, onStatus: (String) -> Unit = {}): String
 }
 
@@ -47,6 +49,9 @@ class SelectedSummaryClient(
 
     override suspend fun summarize(transcript: String, onStatus: (String) -> Unit): String =
         selected().summarize(transcript, onStatus)
+
+    override suspend fun summarizeWithOptions(transcript: String, options: SummaryOptions, onStatus: (String) -> Unit): String =
+        selected().summarizeWithOptions(transcript, options, onStatus)
 
     override suspend fun generateTitle(notes: String, onStatus: (String) -> Unit): String =
         selected().generateTitle(notes, onStatus)
