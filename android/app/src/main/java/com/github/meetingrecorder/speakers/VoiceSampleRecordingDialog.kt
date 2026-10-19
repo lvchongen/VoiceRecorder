@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,7 +34,7 @@ import java.nio.file.Files
 
 /** Short foreground-only enrollment recording, separate from the meeting recording service. */
 @Composable
-internal fun VoiceSampleRecordingDialog(name: String, onDismiss: () -> Unit, onRecorded: (File) -> Unit) {
+internal fun VoiceSampleRecordingDialog(name: String?, onDismiss: () -> Unit, onRecorded: (File, String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val recorder = remember { AudioRecorder(context.applicationContext) }
@@ -43,6 +44,8 @@ internal fun VoiceSampleRecordingDialog(name: String, onDismiss: () -> Unit, onR
     var startedAt by remember { mutableStateOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
     var disposed by remember { mutableStateOf(false) }
+    var naming by remember { mutableStateOf(false) }
+    var nameDraft by remember { mutableStateOf("") }
 
     fun discard() {
         recorder.stop()
@@ -77,9 +80,11 @@ internal fun VoiceSampleRecordingDialog(name: String, onDismiss: () -> Unit, onR
         if (recorder.wasInterrupted || audio == null || audio.length() == 0L) {
             discard()
             error = "录音中断或没有收到声音，请重新录制"
+        } else if (name == null) {
+            naming = true
         } else {
             directory = null // The ViewModel now owns the temporary file and its cleanup.
-            onRecorded(audio)
+            onRecorded(audio, name)
         }
     }
 
@@ -117,25 +122,49 @@ internal fun VoiceSampleRecordingDialog(name: String, onDismiss: () -> Unit, onR
             discard()
             onDismiss()
         },
-        title = { Text("录制声纹") },
+        title = { Text(if (naming) "填写姓名" else "录制声纹") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("为「$name」补充声音样本")
-                Text("请本人在安静环境中连续说话 10–20 秒，避免其他人同时讲话。最多录制 30 秒。")
-                if (recording) Text("正在录制：$seconds 秒", style = MaterialTheme.typography.titleMedium)
+                if (naming) {
+                    Text("录音已完成，请为这份声纹填写姓名。")
+                    OutlinedTextField(
+                        value = nameDraft,
+                        onValueChange = { nameDraft = it },
+                        singleLine = true,
+                        label = { Text("姓名") },
+                        isError = nameDraft.trim().length > 80,
+                    )
+                } else {
+                    Text(if (name == null) "第一步：录制本人的声音" else "为「$name」补充声音样本")
+                    Text("请本人在安静环境中连续说话 10–20 秒，避免其他人同时讲话。最多录制 30 秒。")
+                    if (recording) Text("正在录制：$seconds 秒", style = MaterialTheme.typography.titleMedium)
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
-            TextButton(enabled = !recording || seconds >= 5, onClick = {
-                if (recording) {
+            TextButton(enabled = if (naming) nameDraft.trim().length in 1..80 else !recording || seconds >= 5, onClick = {
+                if (naming) {
+                    val audio = File(requireNotNull(directory), "recording.m4a")
+                    directory = null
+                    onRecorded(audio, nameDraft.trim())
+                } else if (recording) {
                     finish()
                 } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                     start()
                 } else {
                     permission.launch(Manifest.permission.RECORD_AUDIO)
                 }
-            }) { Text(if (recording) "完成并更新" else "开始录制") }
+            }) {
+                Text(
+                    when {
+                        naming -> "保存声纹"
+                        recording && name == null -> "完成录制"
+                        recording -> "完成并更新"
+                        else -> "开始录制"
+                    },
+                )
+            }
         },
         dismissButton = {
             TextButton(onClick = {

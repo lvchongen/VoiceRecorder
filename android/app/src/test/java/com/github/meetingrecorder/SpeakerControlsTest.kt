@@ -76,4 +76,21 @@ class SpeakerControlsTest {
         compose.onNodeWithText("录制声纹").assertDoesNotExist()
         verify(vm, never()).updateRecordedVoiceSample(any(), any())
     }
+
+    @Test fun `add starts with recording before asking for a name`() {
+        val vm = mock<SpeakerViewModel>()
+        whenever(vm.state).thenReturn(MutableStateFlow(SpeakerUiState(modelsReady = true)))
+        compose.setContent { MaterialTheme { VoiceprintPanel(vm) } }
+        compose.onNodeWithText("添加").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("录制声纹").assertIsDisplayed()
+        compose.onNodeWithText("第一步：录制本人的声音").assertIsDisplayed()
+        compose.onNodeWithText("开始录制").assertIsDisplayed()
+        compose.onNodeWithText("姓名").assertDoesNotExist()
+        compose.onNodeWithText("保存声纹").assertDoesNotExist()
+        compose.onNodeWithText("取消").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("录制声纹").assertDoesNotExist()
+        verify(vm, never()).addRecordedVoiceSample(any(), any())
+    }
 }

@@ -33,20 +33,27 @@ fun VoiceprintPanel(viewModel: SpeakerViewModel = viewModel(factory = appViewMod
     LaunchedEffect(viewModel) { viewModel.load() }
     DisposableEffect(viewModel) { onDispose { viewModel.stopSample() } }
     val state by viewModel.state.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val importAudio = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) viewModel.importVoiceSample(context.cacheDir, { context.contentResolver.openInputStream(uri) }, null)
-    }
     var renaming by remember { mutableStateOf<VoiceProfile?>(null) }
     var recordingFor by remember { mutableStateOf<VoiceProfile?>(null) }
+    var adding by remember { mutableStateOf(false) }
     var deleteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     recordingFor?.let { profile ->
         VoiceSampleRecordingDialog(
             name = profile.name,
             onDismiss = { recordingFor = null },
-            onRecorded = { audio ->
+            onRecorded = { audio, _ ->
                 recordingFor = null
                 viewModel.updateRecordedVoiceSample(audio, profile.id)
+            },
+        )
+    }
+    if (adding) {
+        VoiceSampleRecordingDialog(
+            name = null,
+            onDismiss = { adding = false },
+            onRecorded = { audio, name ->
+                adding = false
+                viewModel.addRecordedVoiceSample(audio, name)
             },
         )
     }
@@ -78,7 +85,8 @@ fun VoiceprintPanel(viewModel: SpeakerViewModel = viewModel(factory = appViewMod
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("声纹档案", style = MaterialTheme.typography.titleMedium)
                     TextButton(onClick = {
-                        importAudio.launch("audio/*")
+                        viewModel.stopSample()
+                        adding = true
                     }, enabled = !state.busy) { Text("添加") }
                 }
                 if (state.profiles.isEmpty()) Text("暂无声纹。录音保存后会自动添加。")

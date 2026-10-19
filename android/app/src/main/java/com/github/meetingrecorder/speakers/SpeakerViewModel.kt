@@ -93,18 +93,27 @@ class SpeakerViewModel(
 
     /** Takes ownership of the dialog's private temporary recording, including cancellation cleanup. */
     fun updateRecordedVoiceSample(audio: File, profileId: String) {
+        saveRecordedVoiceSample(audio, profileId, null)
+    }
+
+    fun addRecordedVoiceSample(audio: File, name: String) {
+        saveRecordedVoiceSample(audio, null, name.trim())
+    }
+
+    private fun saveRecordedVoiceSample(audio: File, profileId: String?, name: String?) {
         if (_state.value.busy) {
             audio.parentFile?.deleteRecursively()
             return
         }
-        importVoiceSample(requireNotNull(audio.parentFile?.parentFile), { audio.inputStream() }, profileId)
+        importVoiceSample(requireNotNull(audio.parentFile?.parentFile), { audio.inputStream() }, profileId, name)
         job?.invokeOnCompletion { audio.parentFile?.deleteRecursively() }
     }
 
-    fun importVoiceSample(cacheDir: File, openStream: () -> java.io.InputStream?, profileId: String?) {
+    private fun importVoiceSample(cacheDir: File, openStream: () -> java.io.InputStream?, profileId: String?, name: String?) {
         stopSample()
-        action("正在更新声纹…") {
+        action(if (profileId == null) "正在添加声纹…" else "正在更新声纹…") {
             withContext(ioDispatcher) {
+                if (profileId == null) require(name != null && name.length in 1..80) { "姓名需为 1–80 个字符" }
                 val directory = java.nio.file.Files.createTempDirectory(cacheDir.toPath(), "voice-import-").toFile()
                 try {
                     val audio = File(directory, "recording.m4a")
@@ -113,7 +122,7 @@ class SpeakerViewModel(
                     val meeting = service.analyze(audio, directory)
                     check(meeting.speakers.size == 1 && meeting.speakers.single().samples.isNotEmpty()) { "请提供只包含这位说话人的清晰录音" }
                     if (profileId == null) {
-                        repository.autoEnroll(directory)
+                        repository.confirm(directory, meeting.speakers.single().label, requireNotNull(name), saveVoiceprint = true)
                     } else {
                         val profile = repository.profiles().firstOrNull { it.id == profileId } ?: error("声纹已删除")
                         val speaker = meeting.speakers.single()
