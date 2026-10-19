@@ -29,6 +29,7 @@ class MeetingProcessor(
     private val summaryClient: SummaryClient = gemini,
     private val transcriptionClient: TranscriptionClient = gemini,
     private val speakerTranscriptionClient: TranscriptionClient? = null,
+    private val onAudioSaved: (File) -> Unit = {},
 ) {
 
     /** Upload → transcribe → summarize. Progress text for the UI arrives via [onStatus]. */
@@ -97,6 +98,7 @@ class MeetingProcessor(
         store.saveMeetingMeta(meetingDir, title, durationSeconds)
         val lock = File(meetingDir, ".recording")
         check(!lock.exists() || lock.delete()) { "无法完成录音保存，请检查存储权限" }
+        onAudioSaved(meetingDir)
     }
 
     /** Writes transcript.md + notes.md and saves the meeting.json metadata. */
@@ -110,6 +112,7 @@ class MeetingProcessor(
         writeAtomically(File(meetingDir, "transcript.md"), transcript)
         writeAtomically(File(meetingDir, "notes.md"), notes)
         store.saveMeetingMeta(meetingDir, title, durationSeconds)
+        onAudioSaved(meetingDir)
     }
 
     /** Writes notes.md and saves the meeting.json metadata (the notes-only path). */

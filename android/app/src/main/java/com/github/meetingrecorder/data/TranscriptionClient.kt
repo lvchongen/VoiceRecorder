@@ -4,6 +4,8 @@ import java.io.File
 
 enum class TranscriptionProvider(val label: String) { GEMINI("Gemini"), ALIBABA("阿里云"), WHISPER("Whisper"), QWEN("Qwen3-ASR") }
 
+class NoSpeechDetectedException(message: String) : IllegalStateException(message)
+
 interface TranscriptionClient {
     suspend fun transcribe(audioFile: File, mimeType: String = "audio/mp4", onStatus: (String) -> Unit = {}): String
 }

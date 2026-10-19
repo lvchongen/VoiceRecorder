@@ -36,6 +36,46 @@ class SpeakerServiceTest {
         }
     }
 
+    @Test fun `silent speaker clip does not abort an otherwise recognizable recording`() = runTest {
+        val repo = SpeakerRepository(temp.newFolder())
+        val dir = temp.newFolder()
+        val audio = File(dir, "recording.wav").apply { writeBytes(pcmWave(pcm)) }
+        val chunks = AudioChunks { file, consume -> consume(AudioChunk(file.readBytes(), 0)) }
+        val service = SpeakerService(SpeakerModelStore(temp.newFolder(), assets = emptyList()), repo, chunks) { _, _ -> FakeEngine() }
+        val qwen = com.github.meetingrecorder.data.QwenTranscriptionClient(
+            com.github.meetingrecorder.data.QwenModelStore(temp.newFolder(), emptyList()),
+            chunks,
+        ) {
+            object : com.github.meetingrecorder.data.QwenEngine {
+                override fun transcribe(samples: FloatArray) = if (samples.size < pcm.size) "" else "整段录音可以识别"
+                override fun close() { }
+            }
+        }
+        val result = com.github.meetingrecorder.speakers.SpeakerTranscriptionClient(service, qwen).transcribe(audio)
+        assertTrue(result.contains("整段录音可以识别"))
+    }
+
+    @Test fun `speaker retry never hides cancellation or authentication errors`() = runTest {
+        val dir = temp.newFolder()
+        val audio = File(dir, "recording.wav").apply { writeBytes(pcmWave(pcm)) }
+        val repo = SpeakerRepository(temp.newFolder())
+        val chunks = AudioChunks { file, consume -> consume(AudioChunk(file.readBytes(), 0)) }
+        val service = SpeakerService(SpeakerModelStore(temp.newFolder(), assets = emptyList()), repo, chunks) { _, _ -> FakeEngine() }
+        for (failure in listOf(IllegalStateException("authentication failed"), kotlinx.coroutines.CancellationException("cancelled"))) {
+            var calls = 0
+            val delegate = object : TranscriptionClient {
+                override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String {
+                    calls++
+                    throw failure
+                }
+            }
+            val result = runCatching { com.github.meetingrecorder.speakers.SpeakerTranscriptionClient(service, delegate).transcribe(audio) }
+            assertEquals(failure.javaClass, result.exceptionOrNull()?.javaClass)
+            assertEquals(failure.message, result.exceptionOrNull()?.message)
+            assertEquals(1, calls)
+        }
+    }
+
     @Test fun `windows stitch meeting identities with precise offsets and cache does not reanalyze`() = runTest {
         val repo = SpeakerRepository(temp.newFolder())
         val dir = temp.newFolder()

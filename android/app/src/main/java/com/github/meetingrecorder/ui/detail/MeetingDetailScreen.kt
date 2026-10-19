@@ -58,7 +58,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.meetingrecorder.R
 import com.github.meetingrecorder.appViewModelFactory
-import com.github.meetingrecorder.speakers.SpeakerMeetingPanel
+import com.github.meetingrecorder.speakers.VoiceprintPanel
 import java.text.DateFormat
 import java.util.Date
 
@@ -79,13 +79,28 @@ fun MeetingDetailScreen(
     val currentNotes = notes
     val currentTranscript = transcript
     val processing = genState is GenState.Processing
-    var selectedTab by rememberSaveable(meetingPath) { mutableIntStateOf(if (initialSpeakerTab) 2 else 0) }
+    var selectedTab by rememberSaveable(meetingPath) { mutableIntStateOf(0) }
+    var showVoiceprints by rememberSaveable(meetingPath) { mutableStateOf(initialSpeakerTab) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showOptions by remember(meetingPath) { mutableStateOf(false) }
     var showHistory by remember(meetingPath) { mutableStateOf(false) }
     var draft by remember(meetingPath) { mutableStateOf(viewModel.defaultSummaryOptions) }
     val preview by viewModel.preview.collectAsState()
     val versions by viewModel.versions.collectAsState()
+
+    if (showVoiceprints) {
+        Dialog(onDismissRequest = { showVoiceprints = false }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("声纹管理", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 16.dp))
+                        TextButton(onClick = { showVoiceprints = false }) { Text("关闭") }
+                    }
+                    VoiceprintPanel()
+                }
+            }
+        }
+    }
 
     if (showOptions) {
         AlertDialog(
@@ -161,27 +176,27 @@ fun MeetingDetailScreen(
                     }
                 },
                 actions = {
-                    // Regenerate is offered for notes only, and only once notes exist.
-                    if (selectedTab == 0 && currentNotes != null && !processing) {
+                    if (!processing) {
                         IconButton(onClick = { menuExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more_options))
                         }
                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                            DropdownMenuItem(
-                                text = { Text("历史版本") },
-                                onClick = {
+                            DropdownMenuItem(text = { Text("声纹管理") }, onClick = {
+                                menuExpanded = false
+                                viewModel.stop()
+                                showVoiceprints = true
+                            })
+                            if (selectedTab == 0 && currentNotes != null) {
+                                DropdownMenuItem(text = { Text("历史版本") }, onClick = {
                                     menuExpanded = false
                                     showHistory = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_regenerate_notes)) },
-                                onClick = {
+                                })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.action_regenerate_notes)) }, onClick = {
                                     menuExpanded = false
                                     draft = viewModel.defaultSummaryOptions
                                     showOptions = true
-                                },
-                            )
+                                })
+                            }
                         }
                     }
                 },
@@ -200,18 +215,10 @@ fun MeetingDetailScreen(
                     onClick = { selectedTab = 1 },
                     text = { Text(stringResource(R.string.label_transcript)) },
                 )
-                Tab(
-                    selected = selectedTab == 2,
-                    onClick = {
-                        viewModel.stop()
-                        selectedTab = 2
-                    },
-                    text = { Text("说话人") },
-                )
                 if (hasAudio) {
                     Tab(
-                        selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
                         text = { Text(stringResource(R.string.label_audio)) },
                     )
                 }
@@ -247,15 +254,7 @@ fun MeetingDetailScreen(
                             showOptions = true
                         },
                     )
-                    2 -> SpeakerMeetingPanel(
-                        meetingPath = meetingPath,
-                        transcriptionBusy = processing,
-                        onTranscribe = {
-                            selectedTab = 0
-                            viewModel.generateTranscriptAndNotes(withSpeakers = true)
-                        },
-                    )
-                    3 -> AudioPlayer(viewModel)
+                    2 -> AudioPlayer(viewModel)
                 }
             }
         }

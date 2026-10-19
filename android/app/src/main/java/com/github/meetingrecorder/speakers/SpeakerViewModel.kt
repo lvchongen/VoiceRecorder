@@ -3,7 +3,6 @@ package com.github.meetingrecorder.speakers
 import android.media.MediaPlayer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.github.meetingrecorder.audio.preferredRecording
 import com.github.meetingrecorder.data.Config
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -37,12 +36,6 @@ class SpeakerViewModel(
     private var meetingDir: File? = null
     private var job: Job? = null
     private var player: MediaPlayer? = null
-    val separationEnabled get() = config.speakerSeparationEnabled
-
-    fun setSeparationEnabled(enabled: Boolean) {
-        config.speakerSeparationEnabled = enabled
-    }
-
     fun load(path: String? = null) {
         if (_state.value.busy && meetingDir?.absolutePath == path && job?.isActive == true) return
         job?.cancel()
@@ -90,38 +83,31 @@ class SpeakerViewModel(
 
     fun deleteModels() = action("正在删除模型…") { service.models.delete() }
 
-    fun analyze() {
-        val dir = meetingDir ?: return
+    fun importVoiceSample(cacheDir: File, openStream: () -> java.io.InputStream?, profileId: String?) {
         stopSample()
-        action("正在分析说话人…") {
-            val audio = withContext(ioDispatcher) { preferredRecording(dir) ?: error("没有可分析的录音") }
-            val meeting = service.analyze(audio, dir) { status -> _state.update { it.copy(message = status) } }
-            _state.update { it.copy(meeting = meeting) }
-        }
-    }
-
-    fun clearAnalysis() {
-        val dir = meetingDir ?: return
-        stopSample()
-        action("正在清除本场分析…") {
-            withContext(ioDispatcher) { repository.clearMeeting(dir) }
-            _state.update { it.copy(meeting = null) }
-        }
-    }
-
-    fun confirm(label: String, name: String, profileId: String?, saveVoiceprint: Boolean, sampleIds: Set<String>? = null) {
-        val dir = meetingDir ?: return
-        action("正在保存命名…") {
-            val meeting = withContext(ioDispatcher) { repository.confirm(dir, label, name, profileId, saveVoiceprint, sampleIds) }
-            _state.update { it.copy(meeting = meeting) }
-        }
-    }
-
-    fun clearName(label: String) {
-        val dir = meetingDir ?: return
-        action("正在解除关联…") {
-            val meeting = withContext(ioDispatcher) { repository.clearName(dir, label) }
-            _state.update { it.copy(meeting = meeting) }
+        action("正在更新声纹…") {
+            withContext(ioDispatcher) {
+                val directory = java.nio.file.Files.createTempDirectory(cacheDir.toPath(), "voice-import-").toFile()
+                try {
+                    val audio = File(directory, "recording.m4a")
+                    openStream()?.use { input -> audio.outputStream().use(input::copyTo) } ?: error("无法读取所选录音")
+                    if (!service.models.installed()) service.models.download {}
+                    val meeting = service.analyze(audio, directory)
+                    check(meeting.speakers.size == 1 && meeting.speakers.single().samples.isNotEmpty()) { "请选择只包含这位说话人的清晰录音" }
+                    if (profileId == null) {
+                        repository.autoEnroll(directory)
+                    } else {
+                        val profile = repository.profiles().firstOrNull { it.id == profileId } ?: error("声纹已删除")
+                        val speaker = meeting.speakers.single()
+                        val sampleIds = speaker.samples.take((20 - profile.samples.size).coerceAtLeast(0)).map { it.id }.toSet()
+                        check(sampleIds.isNotEmpty()) { "样本已满，请先移除旧样本" }
+                        repository.confirm(directory, speaker.label, profile.name, profile.id, true, sampleIds)
+                    }
+                } finally {
+                    repository.deleteMeetingSamples(directory)
+                    directory.deleteRecursively()
+                }
+            }
         }
     }
 

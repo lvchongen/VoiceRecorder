@@ -2,8 +2,10 @@ package com.github.meetingrecorder.speakers
 
 import com.github.meetingrecorder.data.AndroidAudioChunks
 import com.github.meetingrecorder.data.AudioChunks
+import com.github.meetingrecorder.data.NoSpeechDetectedException
 import com.github.meetingrecorder.data.TranscriptionClient
 import com.github.meetingrecorder.data.whisperSamples
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -113,7 +115,7 @@ class SpeakerService(
                             allTurns += clean.map { it.copy(startMs = it.startMs + chunk.startMilliseconds, endMs = it.endMs + chunk.startMilliseconds, label = it.label?.let(mapping::getValue)) }
                         }
                     }
-                    check(allTurns.isNotEmpty()) { "未检测到可用语音，请检查音频" }
+                    if (allTurns.isEmpty()) throw NoSpeechDetectedException("未检测到可用语音，请检查音频")
                     coroutineContext.ensureActive()
                     val result = SpeakerMeeting(id, audio.name, sourceHash, speakers, allTurns)
                     repository.saveMeeting(meetingDir, result)
@@ -127,8 +129,29 @@ class SpeakerService(
         }
     }
 
-    suspend fun transcribe(audio: File, meetingDir: File, delegate: TranscriptionClient, onStatus: (String) -> Unit): String {
+    suspend fun analyzeAndEnroll(audio: File, meetingDir: File, onStatus: (String) -> Unit = {}): SpeakerMeeting {
         val meeting = analyze(audio, meetingDir, onStatus)
+        return withContext(Dispatchers.IO) {
+            try {
+                repository.autoEnroll(meetingDir)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Voiceprint storage must not prevent transcription of a valid recording.
+                meeting
+            }
+        }
+    }
+
+    suspend fun transcribe(audio: File, meetingDir: File, delegate: TranscriptionClient, onStatus: (String) -> Unit): String {
+        val meeting = try {
+            analyzeAndEnroll(audio, meetingDir, onStatus)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            onStatus("声纹分析暂不可用，正在使用完整录音转写…")
+            return delegate.transcribe(audio, "audio/${audio.extension}", onStatus)
+        }
         return withContext(Dispatchers.IO) {
             val output = StringBuilder()
             val temporary = File.createTempFile("speaker-turn-", ".wav", repository.analysisDirectory(meeting.id))
@@ -153,7 +176,7 @@ class SpeakerService(
                         }
                     }
                 }
-                check(output.isNotBlank()) { "未识别到语音，请重试" }
+                if (output.isBlank()) throw NoSpeechDetectedException("未识别到语音，请重试")
                 output.toString().trim()
             } finally {
                 temporary.delete()
@@ -164,5 +187,10 @@ class SpeakerService(
 
 class SpeakerTranscriptionClient(private val service: SpeakerService, private val delegate: TranscriptionClient) : TranscriptionClient {
     override suspend fun transcribe(audioFile: File, mimeType: String, onStatus: (String) -> Unit): String =
-        service.transcribe(audioFile, requireNotNull(audioFile.parentFile), delegate, onStatus)
+        try {
+            service.transcribe(audioFile, requireNotNull(audioFile.parentFile), delegate, onStatus)
+        } catch (e: NoSpeechDetectedException) {
+            onStatus("分人片段未识别到文字，正在使用完整录音重试…")
+            delegate.transcribe(audioFile, mimeType, onStatus)
+        }
 }

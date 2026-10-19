@@ -88,7 +88,7 @@ class WhisperTranscriptionClient(
                         result.append("[%02d:%02d:%02d] ".format(java.util.Locale.ROOT, s / 3600, s / 60 % 60, s % 60)).append(text).append("\n\n")
                     }
                 }
-                check(result.isNotBlank()) { "Whisper returned no speech. Check the audio or try another model." }
+                if (result.isBlank()) throw NoSpeechDetectedException("未识别到语音，请检查音频或尝试其他模型")
                 result.toString().trim()
             } finally {
                 cancellation?.dispose()
