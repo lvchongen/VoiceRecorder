@@ -62,6 +62,12 @@ class Config(context: Context) {
             prefs.edit().putString("transcription_provider", value.name).apply()
         }
 
+    var speakerSeparationEnabled: Boolean
+        get() = prefs.getBoolean("speaker_separation_enabled", true)
+        set(value) {
+            prefs.edit().putBoolean("speaker_separation_enabled", value).apply()
+        }
+
     var summaryTemplate: MeetingTemplate
         get() = MeetingTemplate.entries.find { it.name == prefs.getString("summary_template", "GENERAL") } ?: MeetingTemplate.GENERAL
         set(value) {
@@ -138,6 +144,16 @@ class Config(context: Context) {
             prefs.edit().putString("summarization_prompt", value).apply()
         }
 
+    fun templatePrompt(template: MeetingTemplate): String =
+        prefs.getString("summary_template_prompt_${template.name}", null)?.takeIf { it.isNotBlank() } ?: template.defaultPrompt
+
+    fun setTemplatePrompt(template: MeetingTemplate, value: String) {
+        val key = "summary_template_prompt_${template.name}"
+        prefs.edit().apply {
+            if (value.isBlank() || value == template.defaultPrompt) remove(key) else putString(key, value)
+        }.apply()
+    }
+
     var titlePrompt: String
         get() = prefs.getString("title_prompt", "") ?: ""
         set(value) {
@@ -175,19 +191,13 @@ class Config(context: Context) {
         )
 
         val DEFAULT_TRANSCRIPTION_PROMPT = """
-            Transcribe this audio recording exactly as spoken.
-
-            Label each speaker turn with a timestamp and speaker label on a new line, for example:
-
-            [00:00:05] **Alice:** Hello, can everyone hear me?
-            [00:00:09] **Bob:** Yes, loud and clear.
-
-            Rules:
-            - Try to infer each speaker's name from the conversation (e.g. if someone is addressed by name or introduces themselves). Use that name as their label.
-            - If a name cannot be determined, label speakers as **Person 1:**, **Person 2:**, etc., assigned in the order they first speak. Use the same label consistently for the same speaker.
-            - Start each new speaker turn on a new line.
-            - Timestamps should be in [HH:MM:SS] format, incremented roughly every turn.
-            - Transcribe faithfully in whatever language is spoken; do not translate.
+            请忠实转写这段录音，保留原语言，不翻译、不总结、不编造。
+            每次说话人切换另起一行，使用以下格式：
+            [00:00:05] **A:** 大家能听到吗？
+            [00:00:09] **B:** 可以。
+            按首次发言顺序使用 A、B、C 等标签，同一说话人保持一致。不要猜测姓名。
+            时间戳使用 [HH:MM:SS] 格式，尽量对应每次发言开始时间。
+            保留术语、数字、否定和不确定性，合理添加标点。
         """.trimIndent()
 
         val DEFAULT_SUMMARIZATION_PROMPT = """
@@ -212,7 +222,8 @@ class Config(context: Context) {
         """.trimIndent()
 
         val DEFAULT_TITLE_PROMPT = """
-            Generate a concise meeting title in the language(s) used by the notes. For bilingual notes, return a short Chinese title / short English title. Return one line only, no explanation or Markdown heading.
+            请根据下方纪要生成简短、准确的会议标题，使用纪要的语言。
+            双语纪要返回“简短中文标题 / 简短英文标题”。只返回一行标题，不加解释或 Markdown 标题符号。
 
             {notes}
         """.trimIndent()

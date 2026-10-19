@@ -64,6 +64,7 @@ import com.github.meetingrecorder.appViewModelFactory
 fun MainScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToMeetings: () -> Unit,
+    onNavigateToSpeakers: (String) -> Unit = {},
     viewModel: MainViewModel = viewModel(factory = appViewModelFactory),
 ) {
     val state by viewModel.state.collectAsState()
@@ -232,6 +233,7 @@ fun MainScreen(
                     Text("录音已保存", style = MaterialTheme.typography.headlineSmall)
                     Text("打开会议后，可手动生成文字和摘要。")
                     Button(onClick = onNavigateToMeetings) { Text("查看会议") }
+                    OutlinedButton(onClick = { viewModel.savedMeetingPath?.let(onNavigateToSpeakers) }) { Text("识别并命名（可选）") }
                     OutlinedButton(onClick = { viewModel.dismissError() }) { Text("返回首页") }
                 }
 
@@ -240,6 +242,7 @@ fun MainScreen(
                 is RecordingState.Done -> DoneContent(
                     notes = s.notes,
                     onSave = { viewModel.saveResults() },
+                    onSaveAndName = { viewModel.saveResults(onNavigateToSpeakers) },
                     onDiscard = { viewModel.discardResults() },
                 )
 
@@ -328,7 +331,7 @@ private fun ProcessingContent(statusMsg: String) {
 }
 
 @Composable
-private fun DoneContent(notes: String, onSave: () -> Unit, onDiscard: () -> Unit) {
+private fun DoneContent(notes: String, onSave: () -> Unit, onSaveAndName: () -> Unit, onDiscard: () -> Unit) {
     Column(
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -343,6 +346,7 @@ private fun DoneContent(notes: String, onSave: () -> Unit, onDiscard: () -> Unit
                 )
             }
         }
+        TextButton(onClick = onSaveAndName) { Text("保存并命名说话人（可选）") }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onSave) { Text(stringResource(R.string.action_save)) }
             OutlinedButton(onClick = onDiscard) { Text(stringResource(R.string.action_discard)) }

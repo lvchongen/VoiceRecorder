@@ -188,6 +188,10 @@ class SettingsViewModel(private val config: Config, private val models: WhisperM
         config.transcriptionPrompt = value
     }
 
+    fun templatePrompt(template: com.github.meetingrecorder.data.MeetingTemplate) = config.templatePrompt(template)
+
+    fun setTemplatePrompt(template: com.github.meetingrecorder.data.MeetingTemplate, value: String) = config.setTemplatePrompt(template, value)
+
     fun setSummarizationPrompt(value: String) {
         _summarizationPrompt.value = value
         config.summarizationPrompt = value

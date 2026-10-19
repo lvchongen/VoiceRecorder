@@ -38,6 +38,14 @@ class PcmChunkerTest {
     }
 
     @Test
+    fun `fractional chunk offsets retain milliseconds for speaker alignment`() = runTest {
+        val chunks = mutableListOf<AudioChunk>()
+        val chunker = PcmChunker(16000, 2, 32000)
+        chunker.add(ByteArray(96000)) { chunks += it }
+        assertEquals(listOf(0L, 500L, 1000L), chunks.map { it.startMilliseconds })
+    }
+
+    @Test
     fun `bilingual output policy requires matching facts while original mode is explicit`() {
         assertTrue(summaryLanguageInstruction("Bilingual").contains("exactly the same facts"))
         assertTrue(summaryLanguageInstruction("Original").contains("source language"))

@@ -205,7 +205,7 @@ class MeetingDetailViewModel(
     }
 
     /** Persist the transcript, then stage notes for explicit adoption. Requires audio. */
-    fun generateTranscriptAndNotes(options: SummaryOptions = defaultSummaryOptions) {
+    fun generateTranscriptAndNotes(options: SummaryOptions = defaultSummaryOptions, withSpeakers: Boolean = false) {
         if (_genState.value is GenState.Processing) return
         val dir = meetingDir ?: return
         val audio = audioFile ?: return
@@ -218,7 +218,7 @@ class MeetingDetailViewModel(
             try {
                 val provider = config.summaryProvider
                 val model = if (provider == SummaryProvider.DEEPSEEK) config.deepSeekModel else config.model
-                val prompt = config.summarizationPrompt
+                val prompt = config.templatePrompt(options.template) + "\n\n全局补充要求：\n" + config.summarizationPrompt
                 val result = processor.transcribeAndSummarize(
                     audio,
                     extensionToMimeType(audio.extension),
@@ -226,6 +226,7 @@ class MeetingDetailViewModel(
                     onTranscriptSaved = { _transcript.value = it },
                     summaryOptions = options,
                     saveNotesCheckpoint = false,
+                    withSpeakers = withSpeakers,
                 ) {
                     _genState.value = GenState.Processing(it)
                 }
@@ -259,7 +260,7 @@ class MeetingDetailViewModel(
             try {
                 val provider = config.summaryProvider
                 val model = if (provider == SummaryProvider.DEEPSEEK) config.deepSeekModel else config.model
-                val prompt = config.summarizationPrompt
+                val prompt = config.templatePrompt(options.template) + "\n\n全局补充要求：\n" + config.summarizationPrompt
                 val notes = processor.previewSummary(transcript, options) { _genState.value = GenState.Processing(it) }
                 check(notes.isNotBlank()) { "模型返回了空纪要，请重试。" }
                 _preview.value = SummaryVersion(notes = notes, sourceTranscript = transcript, options = options, provider = provider.name, model = model, prompt = prompt)

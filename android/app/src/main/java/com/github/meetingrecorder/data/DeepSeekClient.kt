@@ -41,7 +41,7 @@ class DeepSeekClient(
 
     override suspend fun summarizeWithOptions(transcript: String, options: SummaryOptions, onStatus: (String) -> Unit): String {
         onStatus("Generating meeting notes with DeepSeek…")
-        return validateSummaryReferences(complete(buildSummaryPrompt(transcript, options, config.summarizationPrompt)), transcript)
+        return validateSummaryReferences(complete(buildSummaryPrompt(transcript, options, config.summarizationPrompt, config.templatePrompt(options.template))), transcript)
     }
 
     override suspend fun generateTitle(notes: String, onStatus: (String) -> Unit): String {

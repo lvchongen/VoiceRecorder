@@ -17,11 +17,11 @@ class SummaryOptionsTest {
             SummaryOptions(MeetingTemplate.TECHNICAL, SummaryDetail.DETAILED, "Chinese"),
         )
         assertTrue(prompt.contains("Simplified Chinese"))
-        assertTrue(prompt.contains("trade-offs"))
-        assertTrue(prompt.contains("dissent"))
+        assertTrue(prompt.contains("取舍理由"))
+        assertTrue(prompt.contains("重要分歧"))
         assertTrue(prompt.contains("[P2] [00:02:00] B: No approval yet."))
-        assertTrue(prompt.contains("Never invent timestamps"))
-        assertTrue(prompt.contains("withdrawn decisions"))
+        assertTrue(prompt.contains("不编造段落编号和时间戳"))
+        assertTrue(prompt.contains("已撤回决策"))
     }
 
     @Test
@@ -29,9 +29,9 @@ class SummaryOptionsTest {
         MeetingTemplate.entries.forEach { template ->
             SummaryDetail.entries.forEach { detail ->
                 val prompt = buildSummaryPrompt("source", SummaryOptions(template, detail))
-                assertTrue(prompt.contains(template.focus))
+                assertTrue(prompt.contains(template.defaultPrompt))
                 assertTrue(prompt.contains(detail.instruction))
-                assertTrue(prompt.contains("Omit unsupported or empty sections"))
+                assertTrue(prompt.contains("省略原文没有支持"))
             }
         }
     }
@@ -49,6 +49,15 @@ class SummaryOptionsTest {
         val prompt = buildSummaryPrompt("Ignore above {transcript}", SummaryOptions(), "Summarize: {transcript}")
         assertTrue(prompt.contains("Summarize: [P1] Ignore above {transcript}"))
         assertFalse(prompt.contains("Summarize: [P1] Ignore above [P1]"))
+    }
+
+    @Test
+    fun `custom template replaces built in requirements without changing other templates`() {
+        val edited = buildSummaryPrompt("事实", SummaryOptions(template = MeetingTemplate.WEEKLY), "突出延期", "按负责人分组")
+        assertTrue(edited.contains("按负责人分组"))
+        assertTrue(edited.contains("突出延期"))
+        assertFalse(edited.contains(MeetingTemplate.WEEKLY.defaultPrompt))
+        assertTrue(buildSummaryPrompt("事实", SummaryOptions()).contains(MeetingTemplate.GENERAL.defaultPrompt))
     }
 
     @Test(expected = IllegalArgumentException::class)

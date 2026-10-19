@@ -28,6 +28,7 @@ class MeetingProcessor(
     private val logWarn: (String, Exception) -> Unit = { msg, e -> Log.w(TAG, msg, e) },
     private val summaryClient: SummaryClient = gemini,
     private val transcriptionClient: TranscriptionClient = gemini,
+    private val speakerTranscriptionClient: TranscriptionClient? = null,
 ) {
 
     /** Upload → transcribe → summarize. Progress text for the UI arrives via [onStatus]. */
@@ -38,9 +39,11 @@ class MeetingProcessor(
         onTranscriptSaved: (String) -> Unit = {},
         summaryOptions: SummaryOptions? = null,
         saveNotesCheckpoint: Boolean = true,
+        withSpeakers: Boolean = false,
         onStatus: (String) -> Unit = {},
     ): ProcessingResult {
-        val transcript = transcriptionClient.transcribe(audioFile, mimeType, onStatus)
+        val client = if (withSpeakers) requireNotNull(speakerTranscriptionClient) { "说话人转写未配置" } else transcriptionClient
+        val transcript = client.transcribe(audioFile, mimeType, onStatus)
         saveCheckpoint(meetingDir, "transcript.md", transcript)
         onTranscriptSaved(transcript)
         val notes = if (summaryOptions == null) summaryClient.summarize(transcript, onStatus) else summaryClient.summarizeWithOptions(transcript, summaryOptions, onStatus)
