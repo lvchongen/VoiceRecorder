@@ -323,8 +323,8 @@ class GeminiClientTest {
         )
         val request = org.json.JSONObject(server.takeRequest().body.readUtf8())
         val prompt = request.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text")
-        assertTrue(prompt.contains("TECHNICAL"))
-        assertTrue(prompt.contains("DETAILED"))
+        assertTrue(prompt.contains("技术评审"))
+        assertTrue(prompt.contains("详细"))
         assertTrue(prompt.contains("[P1] A: propose B"))
         assertFalse(prompt.contains("Keep notes concise."))
     }

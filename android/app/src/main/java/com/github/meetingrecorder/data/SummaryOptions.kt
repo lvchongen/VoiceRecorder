@@ -81,9 +81,9 @@ fun buildSummaryPrompt(transcript: String, options: SummaryOptions, customPrompt
         输出语言只控制纪要的语言，不改变原始转写；双语版本表达相同事实，不新增信息。
         使用标准 Markdown 标题与列表，不把整个结果包进代码块。
         若逐字稿明显残缺或只有少量内容，明确说明“依据现有片段”，不要推测缺失的会议内容。
-        当前会议模板：${options.template.label} (${options.template.name})
+        当前会议模板：${options.template.label}
         模板要求：${templatePrompt?.takeIf { it.isNotBlank() } ?: options.template.defaultPrompt}
-        详细程度：${options.detail.label} (${options.detail.name})。${options.detail.instruction}
+        详细程度：${options.detail.label}。${options.detail.instruction}
         ${if (options.detail == SummaryDetail.QUICK) "仅保留简短概览、关键决策、行动项和重要待确认问题。" else "先提供简短的结果概览，再按模板要求组织内容，并将标题转换为所选输出语言。"}
         省略原文没有支持或内容为空的栏目，不为填充模板编造内容。
         区分已确认决策、提案、待确认问题和已撤回决策，不把沉默视为同意。
