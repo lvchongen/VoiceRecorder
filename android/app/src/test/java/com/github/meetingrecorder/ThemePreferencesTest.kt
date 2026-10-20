@@ -15,6 +15,25 @@ import com.github.meetingrecorder.data.Config as AppConfig
 @Config(sdk = [34], application = Application::class)
 class ThemePreferencesTest {
     @Test
+    fun `template prompts persist separately and reset without losing legacy supplement`() {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("meeting_recorder", Context.MODE_PRIVATE).edit().clear().commit()
+        val config = AppConfig(context)
+        val weekly = com.github.meetingrecorder.data.MeetingTemplate.WEEKLY
+        val general = com.github.meetingrecorder.data.MeetingTemplate.GENERAL
+        config.summarizationPrompt = "原有补充"
+        config.setTemplatePrompt(weekly, "按负责人整理")
+        val reopened = AppConfig(context)
+        assertEquals("按负责人整理", reopened.templatePrompt(weekly))
+        assertEquals(general.defaultPrompt, reopened.templatePrompt(general))
+        assertEquals("原有补充", reopened.summarizationPrompt)
+        reopened.setTemplatePrompt(weekly, weekly.defaultPrompt)
+        assertEquals(weekly.defaultPrompt, AppConfig(context).templatePrompt(weekly))
+        reopened.setTemplatePrompt(weekly, "  ")
+        assertEquals(weekly.defaultPrompt, reopened.templatePrompt(weekly))
+    }
+
+    @Test
     fun `denoising defaults off and persists independently of recognition model`() {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("meeting_recorder", Context.MODE_PRIVATE).edit().clear().commit()

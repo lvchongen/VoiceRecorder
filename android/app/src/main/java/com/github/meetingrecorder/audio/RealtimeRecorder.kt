@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
+import com.github.meetingrecorder.data.DenoiseModel
 import java.io.File
 
 /** Captures once; raw AAC is saved before sending each frame to the optional denoising branch. */
@@ -31,7 +32,7 @@ class RealtimeRecorder(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    fun start(dir: File, bitrate: Int, onInterrupted: (() -> Unit)?): File {
+    fun start(dir: File, bitrate: Int, model: DenoiseModel, onInterrupted: (() -> Unit)?): File {
         interruption = onInterrupted
         interrupted = false
         val rawFile = File(dir, "recording.m4a")
@@ -49,10 +50,15 @@ class RealtimeRecorder(private val context: Context) {
             check(source.state == AudioRecord.STATE_INITIALIZED) { "无法初始化麦克风" }
             raw = AacPcmSink(rawFile, bitrate)
             // Failure to load/encode the optional branch must not prevent raw capture.
-            var engine: GtcrnDenoiser? = null
+            var engine: StreamingDenoiser? = null
             try {
-                engine = GtcrnDenoiser(context.assets)
+                engine = ModelDenoiser(context.assets, model)
                 branch = DenoisingBranch(engine, AacPcmSink(cleanFile, bitrate), { warning -> saveWarning(dir, warning) })
+                runCatching {
+                    File(dir, "denoise-model.txt").writeText(
+                        if (model == DenoiseModel.DPDFNET8) "DPDFNET8\nattenuation_limit_db=6\nalignment_delay_samples=640" else model.name,
+                    )
+                }
             } catch (e: Exception) {
                 engine?.close()
                 cleanFile.delete()

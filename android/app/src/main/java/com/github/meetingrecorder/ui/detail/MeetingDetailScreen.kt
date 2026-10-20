@@ -13,10 +13,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -26,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -49,9 +54,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.meetingrecorder.R
 import com.github.meetingrecorder.appViewModelFactory
+import com.github.meetingrecorder.speakers.VoiceprintPanel
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +68,7 @@ fun MeetingDetailScreen(
     meetingPath: String,
     onBack: () -> Unit,
     viewModel: MeetingDetailViewModel = viewModel(factory = appViewModelFactory),
+    initialSpeakerTab: Boolean = false,
 ) {
     LaunchedEffect(meetingPath) { viewModel.load(meetingPath) }
 
@@ -70,7 +80,92 @@ fun MeetingDetailScreen(
     val currentTranscript = transcript
     val processing = genState is GenState.Processing
     var selectedTab by rememberSaveable(meetingPath) { mutableIntStateOf(0) }
+    var showVoiceprints by rememberSaveable(meetingPath) { mutableStateOf(initialSpeakerTab) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var showOptions by remember(meetingPath) { mutableStateOf(false) }
+    var reTranscribe by remember(meetingPath) { mutableStateOf(false) }
+    var showHistory by remember(meetingPath) { mutableStateOf(false) }
+    var draft by remember(meetingPath) { mutableStateOf(viewModel.defaultSummaryOptions) }
+    val preview by viewModel.preview.collectAsState()
+    val versions by viewModel.versions.collectAsState()
+
+    if (showVoiceprints) {
+        Dialog(onDismissRequest = { showVoiceprints = false }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("声纹管理", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 16.dp))
+                        TextButton(onClick = { showVoiceprints = false }) { Text("关闭") }
+                    }
+                    VoiceprintPanel()
+                }
+            }
+        }
+    }
+
+    if (showOptions) {
+        AlertDialog(
+            onDismissRequest = { showOptions = false },
+            title = { Text(if (reTranscribe) "重新转写并生成" else "生成内容") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SummaryOptionsEditor(draft, { draft = it })
+                    Text(if (reTranscribe || currentTranscript.isNullOrBlank()) "使用已保存的录音重新转写，再按所选模板生成并自动保存。" else "复用已有逐字稿，按所选模板生成后自动保存；旧版保留在历史版本中。", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showOptions = false
+                    if (reTranscribe || currentTranscript.isNullOrBlank()) viewModel.generateTranscriptAndNotes(draft) else viewModel.regenerateNotes(draft)
+                }) { Text("生成并保存") }
+            },
+            dismissButton = { TextButton(onClick = { showOptions = false }) { Text("取消") } },
+        )
+    }
+    if (showHistory) {
+        AlertDialog(
+            onDismissRequest = { showHistory = false },
+            title = { Text("纪要历史版本") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (versions.isEmpty()) Text("生成纪要后，会在这里自动保留版本。")
+                    versions.forEach { version ->
+                        TextButton(onClick = {
+                            showHistory = false
+                            viewModel.previewVersion(version)
+                        }) {
+                            Text(DateFormat.getDateTimeInstance().format(Date(version.createdAt)) + " · " + (version.options?.template?.label ?: "原有纪要") + " · " + (version.options?.detail?.label ?: "") + "\n" + (version.model ?: "模型未记录"))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showHistory = false }) { Text("关闭") } },
+        )
+    }
+    preview?.let { version ->
+        var showEvidence by remember(version.id) { mutableStateOf(false) }
+        Dialog(onDismissRequest = { if (!processing) viewModel.dismissPreview() }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                    Text("历史纪要", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
+                    Text(
+                        listOfNotNull(version.options?.template?.label, version.options?.detail?.label, version.model).joinToString(" · "),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    version.sourceTranscript?.let {
+                        TextButton(onClick = { showEvidence = !showEvidence }) { Text(if (showEvidence) "返回纪要" else "查看引用原文") }
+                    }
+                    ContentText(if (showEvidence) com.github.meetingrecorder.data.numberedTranscript(version.sourceTranscript.orEmpty()) else com.github.meetingrecorder.data.withoutParagraphReferences(version.notes), Modifier.weight(1f))
+                    if (genState is GenState.Error) ErrorBanner((genState as GenState.Error).msg)
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = viewModel::adoptPreview, enabled = !processing, modifier = Modifier.fillMaxWidth()) { Text(if (processing) "保存中…" else "恢复此历史版本") }
+                        TextButton(onClick = viewModel::dismissPreview, enabled = !processing, modifier = Modifier.fillMaxWidth()) { Text("关闭") }
+                    }
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -82,19 +177,37 @@ fun MeetingDetailScreen(
                     }
                 },
                 actions = {
-                    // Regenerate is offered for notes only, and only once notes exist.
-                    if (selectedTab == 0 && currentNotes != null && !processing) {
+                    if (!processing) {
                         IconButton(onClick = { menuExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more_options))
                         }
                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_regenerate_notes)) },
-                                onClick = {
+                            if (hasAudio) {
+                                DropdownMenuItem(text = { Text("重新转写并生成") }, onClick = {
                                     menuExpanded = false
-                                    viewModel.regenerateNotes()
-                                },
-                            )
+                                    viewModel.stop()
+                                    draft = versions.firstOrNull { it.notes == currentNotes }?.options ?: viewModel.defaultSummaryOptions
+                                    reTranscribe = true
+                                    showOptions = true
+                                })
+                            }
+                            DropdownMenuItem(text = { Text("声纹管理") }, onClick = {
+                                menuExpanded = false
+                                viewModel.stop()
+                                showVoiceprints = true
+                            })
+                            if (selectedTab == 0 && currentNotes != null) {
+                                DropdownMenuItem(text = { Text("历史版本") }, onClick = {
+                                    menuExpanded = false
+                                    showHistory = true
+                                })
+                                DropdownMenuItem(text = { Text("仅重新生成纪要") }, onClick = {
+                                    menuExpanded = false
+                                    draft = versions.firstOrNull { it.notes == currentNotes }?.options ?: viewModel.defaultSummaryOptions
+                                    reTranscribe = false
+                                    showOptions = true
+                                })
+                            }
                         }
                     }
                 },
@@ -134,14 +247,27 @@ fun MeetingDetailScreen(
                         transcript = currentTranscript,
                         hasAudio = hasAudio,
                         genState = genState,
-                        onGenerateNotes = viewModel::generateNotes,
-                        onGenerateAll = viewModel::generateTranscriptAndNotes,
+                        onGenerateNotes = {
+                            draft = versions.firstOrNull { it.notes == currentNotes }?.options ?: viewModel.defaultSummaryOptions
+                            reTranscribe = false
+                            showOptions = true
+                        },
+                        onGenerateAll = {
+                            draft = versions.firstOrNull { it.notes == currentNotes }?.options ?: viewModel.defaultSummaryOptions
+                            reTranscribe = false
+                            showOptions = true
+                        },
                     )
                     1 -> TranscriptTabBody(
                         transcript = currentTranscript,
                         hasAudio = hasAudio,
                         genState = genState,
-                        onGenerateAll = viewModel::generateTranscriptAndNotes,
+                        onGenerateAll = {
+                            viewModel.stop()
+                            draft = versions.firstOrNull { it.notes == currentNotes }?.options ?: viewModel.defaultSummaryOptions
+                            reTranscribe = true
+                            showOptions = true
+                        },
                     )
                     2 -> AudioPlayer(viewModel)
                 }
@@ -162,7 +288,7 @@ private fun NotesTabBody(
     when {
         notes != null -> Column(Modifier.fillMaxSize()) {
             // Surface regenerate failures without losing the existing notes.
-            ContentText(notes, Modifier.weight(1f))
+            ContentText(com.github.meetingrecorder.data.withoutParagraphReferences(notes), Modifier.weight(1f))
         }
         // Reached only when notes are absent, so hasNotes is false here.
         else -> EmptyState(placeholderRes = R.string.no_notes) {
@@ -191,7 +317,12 @@ private fun TranscriptTabBody(
 ) {
     when {
         // Keep the transcript readable even while notes are being generated in the background.
-        transcript != null -> ContentText(transcript)
+        transcript != null -> Column(Modifier.fillMaxSize()) {
+            if (hasAudio) {
+                TextButton(onClick = onGenerateAll, enabled = genState !is GenState.Processing) { Text("重新转写并生成") }
+            }
+            ContentText(com.github.meetingrecorder.data.chronologicalTranscript(com.github.meetingrecorder.data.withoutParagraphReferences(transcript)), Modifier.weight(1f))
+        }
         // Reached only when the transcript is absent, so hasTranscript is false here.
         else -> EmptyState(placeholderRes = R.string.no_transcript) {
             if (genState !is GenState.Processing && transcriptTabAction(hasTranscript = false, hasAudio = hasAudio) ==

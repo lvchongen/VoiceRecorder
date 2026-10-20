@@ -53,8 +53,12 @@ class MeetingsViewModel(
 
     fun deleteMeeting(meeting: Meeting) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { repo.deleteMeeting(meeting.path) }
-            loadMeetings()
+            try {
+                withContext(Dispatchers.IO) { repo.deleteMeeting(meeting.path) }
+                loadMeetings()
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "会议删除失败"
+            }
         }
     }
 

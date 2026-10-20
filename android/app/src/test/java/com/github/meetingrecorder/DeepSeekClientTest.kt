@@ -61,8 +61,25 @@ class DeepSeekClientTest {
         val body = JSONObject(request.body.readUtf8())
         assertEquals("custom-model", body.getString("model"))
         assertFalse(body.getBoolean("stream"))
-        assertTrue(body.getJSONArray("messages").getJSONObject(1).getString("content").endsWith("总结：张三说：\"周五交付\"\n下一行"))
+        assertTrue(body.getJSONArray("messages").getJSONObject(1).getString("content").endsWith("总结：[P1] 张三说：\"周五交付\"\n[P2] 下一行"))
         assertFalse(body.toString().contains("inline_data"))
+    }
+
+    @Test
+    fun `explicit options reach DeepSeek and invalid evidence is rejected`() = runTest {
+        server.enqueue(result("Proposal [P1]"))
+        val options = com.github.meetingrecorder.data.SummaryOptions(
+            com.github.meetingrecorder.data.MeetingTemplate.BRAINSTORM,
+            com.github.meetingrecorder.data.SummaryDetail.QUICK,
+            "Original",
+        )
+        client.summarizeWithOptions("A: propose B", options)
+        val prompt = JSONObject(server.takeRequest().body.readUtf8()).getJSONArray("messages").getJSONObject(1).getString("content")
+        assertTrue(prompt.contains("头脑风暴"))
+        assertTrue(prompt.contains("速览"))
+        assertTrue(prompt.contains("source language"))
+        server.enqueue(result("Action [P2]"))
+        assertTrue(runCatching { client.summarizeWithOptions("one line", options) }.isFailure)
     }
 
     @Test

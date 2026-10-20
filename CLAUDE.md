@@ -264,7 +264,7 @@ Settings labels/options are Chinese (service names/model identifiers retain thei
 
 ## Android real-time recording denoising
 
-The optional Chinese setting “录音实时降噪（GTCRN）” defaults off. Existing MediaRecorder recording remains the off path. When enabled, `RealtimeRecorder` captures mono PCM16 at 16 kHz, encodes the original as recording.m4a, and sends copied 20 ms frames to a bounded `DenoisingBranch`. GTCRN runs on a separate CPU thread via the existing sherpa-onnx 1.13.8 JNI runtime. `AacPcmSink` encodes each stream independently; timestamps derive from sample counts. A successful flush and exact input/output sample count precede atomic publication of recording-denoised.m4a from a partial file. Any enhancement failure or queue saturation discards that enhanced file and preserves the original; a saved warning appears in Audio. Detail playback selects either version, while automatic processing prefers the completed enhanced file. Changing playback version alone does not regenerate the transcript.
+The optional Chinese setting “录音实时降噪” defaults off; DPDFNet8 with a fixed 6 dB suppression limit is the default model, and GTCRN remains selectable. Existing MediaRecorder recording remains the off path. When enabled, `RealtimeRecorder` captures mono PCM16 at 16 kHz, encodes the original as recording.m4a, and sends copied 20 ms frames to a bounded `DenoisingBranch`. The selected model runs on a separate worker via the existing sherpa-onnx 1.13.8 JNI runtime. DPDFNet8 uses four CPU threads and aligned suppression limiting; GTCRN uses one CPU thread. `AacPcmSink` encodes each stream independently; timestamps derive from sample counts. A successful flush and exact input/output sample count precede atomic publication of recording-denoised.m4a from a partial file. Any enhancement failure or queue saturation discards that enhanced file and preserves the original; a saved warning appears in Audio. Detail playback selects either version, while automatic processing prefers the completed enhanced file. Changing playback version alone does not regenerate the transcript.
 
 Recording service start/stop run on one serialized executor, and its partial wake lock is held only during recording/finalization. This helps locked-screen capture but is not protection against forced termination or manufacturer restrictions. No ASR/download background worker is added. Two AAC files use extra storage; enhanced mode captures 16 kHz speech audio rather than the normal 44.1 kHz path.
 
@@ -275,3 +275,65 @@ Device validation on 2026-10-19: PKG110/API 35 passed public-fixture JNI/AAC rou
 ## Android manual processing after recording
 
 Stopping a recording finalizes audio and meeting metadata, removes the recording lock, and shows AudioSaved with a library shortcut. It never invokes ASR or summarization. Recording does not require processing credentials. The former processing-countdown UI/state is removed; its legacy preference remains harmless and is ignored. Detail-screen generate actions explicitly start processing later. Existing import-and-process remains a user-initiated operation. RecordingStopDecisionTest and MeetingProcessorTest cover save-only dispatch, library visibility, audio preservation and zero network requests.
+
+
+## Android summary templates and history
+
+`data/SummaryOptions.kt` defines six meeting types, three detail levels and the shared cloud/local prompt builder. `Config.summaryTemplate` / `summaryDetail` default to GENERAL/STANDARD; existing language and custom prompts remain intact. Source line IDs are added in memory, never written into transcript.md. Mechanical reference validation rejects out-of-range P IDs and absent bracketed HH:MM:SS timestamps; do not describe this as factual verification.
+
+`MeetingDetailViewModel` immediately saves generated notes through SummaryHistory.adopt for both notes-only and audio-first paths, updates visible notes and metadata, and archives the old version automatically. No generated preview/adoption step. Preview state is used only for explicitly browsing historical versions; restore/close controls use separate full-width rows. Generation or archive failure preserves prior notes. SummaryHistory snapshots retain source/options/provider/model/prompt and remain compatible with Linux.
+
+`SummaryOptionsEditor` uses existing Material 3 dropdowns. TranscriptTimeline.kt sorts timestamped utterances stably for reading, preserves untimed text, and never fabricates timestamps. Normal Notes/Transcript reading hides generated [P#] markers without modifying stored history/source. History evidence can still show numbered source. SummaryPreviewTest covers automatic save and failure protection; SummaryControlsTest covers options/history controls. Per user instruction, this usability update is built and installed without running tests.
+
+The optional local speaker pipeline is documented below; existing Gemini-only speaker labels are not independent verified voiceprints.
+
+
+CI and Android release setup explicitly accept SDK/preview licenses and install the exact app NDK/CMake versions before Gradle configuration. Keep those versions aligned with app/build.gradle.kts. Speaker profiles support multiple samples per person; official multi-enrollment support is not evidence of illness robustness without evaluation.
+
+
+## Android local speakers and voice profiles
+
+`speakers/` owns local diarization, embeddings, meeting-local A/B/C and automatic cross-meeting voice profiles. Models prepare in an application-scoped background job at startup, and retry after recording save. AppContainer queues nonblocking analysis/enrollment after audio save and wraps ASR when models are ready. Missing models never block recording/transcription. SpeakerTranscriptionClient retries the original complete recording only for typed NoSpeechDetectedException; analysis failures also fall back to ordinary ASR. Cancellation/auth/network failures are not treated as empty speech.
+
+`SpeakerService` decodes bounded chunks twice (analysis then turn ASR), never buffers an entire long recording. AudioChunk.startMilliseconds preserves fractional chunk offsets; legacy startSeconds consumers are unchanged. Native work is checked for cancellation before/after bounded windows and released before ASR. Overlapping detected turns become unassigned; short/quiet/clipped samples cannot enroll. Cross-window stitching uses heuristic cosine score 0.65 and candidate margin 0.08, not calibrated identity guarantees. A local cluster cannot consume a label already used by another cluster in the same window. Cache checks audio SHA, pipeline version and embedding model ID; changing model/stitching semantics requires changing PIPELINE_VERSION.
+
+`SpeakerRepository` stores embeddings and 2–6-second clips in noBackupFilesDir; public speakers.json contains only an analysis ID. autoEnroll matches compatible profiles at cosine >=0.8 with margin >=0.1, excluding IDs already used in this meeting; unmatched eligible voices become numbered unnamed profiles. Matching is heuristic, not an identity guarantee. Cache processing is idempotent; deleted linked profiles are not recreated from that cache. Independent profile clips survive meeting deletion. Profile updates append samples; JSON writes and copy rollback remain atomic. Rename/delete never rewrite old transcripts/notes.
+
+UI: no extra recording/save buttons or speaker tab. Meeting overflow opens voiceprint management; Settings retains its Voiceprints tab. VoiceprintPanel exposes direct-recording add/update, audition, rename, sample removal and deletion. Adding records first and asks for a name before creating a profile. Enrollment is automatic, without per-person confirmation or checkboxes. SpeakerViewModel owns IO/cancellation/player lifecycle and subscribes to repository profile changes so automatic enrollment refreshes an open manager. Keep existing Material 3 styling. Samples remain bounded at 3 per meeting speaker and 20 per profile.
+
+Tests: SpeakerDataTest, SpeakerRepositoryTest, SpeakerServiceTest, SpeakerControlsTest, millisecond chunk/route regressions, plus opt-in SpeakerDeviceTest using staged public two-speaker audio in isolated app cache. Do not substitute self-similarity or synthetic fixtures for real cross-person/illness accuracy evaluation. Never enable microphone device tests implicitly. Device installs must use adb install -r, preserving existing app data.
+
+### Android 模板提示词
+
+设置 → 提示词中选择会议类型，会显示该模板独立的中文摘要提示词；修改后点击保存，可恢复当前模板默认值。生成时按实际所选模板读取配置，会议内临时选择也生效。转写与标题提示词独立于摘要模板。全局补充要求默认留空，兼容保留旧版自定义摘要提示词；模板自定义按枚举名存储，留空使用内置默认。摘要版本记录该模板提示词与全局补充要求。测试覆盖模板切换、独立持久化、恢复默认和原文插值。
+
+ASR 生命周期：一次会议转写通过 `TranscriptionClient.withSession` 共用一个本地 Qwen/Whisper 实例，所有说话片段和空片段后的整段重试复用该实例，完成/失败/取消后释放。先完成声纹分析再加载 ASR，避免分人模型与 ASR 同时常驻。当前易用性修改按用户要求仅 build + adb install -r，不执行测试。
+
+说话人计数只包含有有效声纹证据的分组。分人模型产生的过短/低质量碎片保留为未确认，不直接创建新字母或声纹档案；原始语音内容仍参与转写。分组策略版本升为 v2，使旧分组缓存下次处理时重算。ASR 与声纹在同一次用户操作中完成，内部仍为两个独立模型。
+
+重新处理已有录音：会议右上角菜单及 Transcript 页提供“重新转写并生成”，直接使用当前保存的录音，重跑 ASR 和纪要生成，不重新录制；使用当前纪要的模板选项（没有记录时使用默认选项）。结果自动保存，旧纪要自动归档。菜单“仅重新生成纪要”复用现有 Transcript。处理中禁用重复操作。
+
+新增“对话翻译”内容模板：独立中文提示词，保留说话人、时间戳、问答顺序并逐段翻译，不执行摘要概览/详细程度/行动项策略。支持原文＋中英互译、译为中文/英文/日文；原语言旧偏好在此模式按原文＋互译处理。重新转写及仅重新生成均先打开模板选择，默认沿用当前已保存版本的选项，确认后自动生成并保存。未确定说话人统一显示“未确认”，旧内容阅读时兼容替换旧标签。
+
+### DPDFNet8 人声保留降噪
+
+设置 → 通用 → 录音实时降噪 → 降噪方案，可选“DPDFNet8（人声保留，默认）”和“GTCRN（轻量）”。保存后对下一次录音生效；保留已有方案选择和降噪开关状态，开关默认关闭。DPDFNet8 使用 16 kHz 单声道、CPU 4 线程，GTCRN 使用 CPU 1 线程。不叠加 Android 系统 NS，不添加音量均衡或自动增益。
+
+DPDFNet8 固定采用 6 dB 抑制上限：先补偿该模型在 sherpa-onnx 1.13.8 中四跳共 640 样本（40 ms）的输出延迟，再将对齐的原始 PCM 与增强 PCM 按约 50.1% / 49.9% 混合。不是直接回放原音，也不是给流式接口设置无效的 attenuationLimitDb；该字段仅在离线接口实现。流式结束补零排出延迟尾音，精确检查输入/输出样本数；只缓存待对齐片段，积压过大立即停止降噪分支。保留轻声的代价是保留部分残余噪声。参数和延迟绑定当前模型/runtime，升级时须重新验证。
+
+保留原始 recording.m4a 和完整的 recording-denoised.m4a；初始化、队列积压、时长异常仍保护原音。自动转写优先完整降噪文件，已有录音不自动改写。denoise-model.txt 记录模型、6 dB 上限和 640 样本对齐参数。SpeechPreservingDenoiserTest 覆盖延迟对齐、过度抑制下的语音保留、任意块边界、短录音尾音和积压失败；DenoisingBranchTest 覆盖分支和文件完整性。原生模型质量和实时速度需要真机验证，JVM 测试不能代替。SpeechPreservingDeviceTest 是显式传入私有缓存 PCM16 WAV 样本和参考音频的本地回归，检查正式 ModelDenoiser 路径、AAC 编码、样本数、波形误差和实时速度；不启动麦克风、不修改会议。
+
+已用用户授权的 14:32 整段录音作本地对照：原音转写 83 字，旧全强度降噪仅 13 字，离线 6 dB 候选恢复 83 字且与原音转写一致，用户试听认可。此为单个样本的转写一致性，不是带人工标注的准确率评测，也不代表所有会议环境。流式对齐候选与获认可离线候选的波形相关系数约 0.9999。私人录音与识别内容不提交仓库。
+
+模型随 APK 附带，官方来源 https://huggingface.co/Ceva-IP/DPDFNet/resolve/dd6818d00f50c836fed43a6243ebe49116de5964/onnx/dpdfnet8.onnx ，14542517 bytes，SHA-256 899d4f23f3ff86edbffa8c537e4bcbdc49da1b4e84e0ef390611e0604a3b26cb。Apache-2.0 许可证附于 assets/licenses/DPDFNet-APACHE-2.0.txt（上游 ceva-ip/DPDFNet 9bd9844a227bb6aa57e55588d8d0e961fcff1c46）。
+
+真机回归（2026-10-19，PKG110）：输入 491520 样本 / 30.72 秒，处理 11.94 秒（RTF 0.389），与认可离线候选的波形相关系数 0.999923，相对 RMS 误差 0.01243，完整样本数一致。仅代表该样本和本次设备状态；长期录音的发热/耗电未据此验证。覆盖安装使用 adb install -r，保留现有数据和降噪开关/模型选择。
+
+声纹管理的“更新”直接打开录制弹窗，不再选择文件。用户显式开始后录制本人声音，建议 10–20 秒，满 5 秒可完成，30 秒自动结束并提交当前档案；补充样本而非覆盖已有样本。会议正在录音时禁止并行录制。取消、页面离开或应用进入后台停止录音并删除临时文件，交给 ViewModel 的录音在处理完成/失败/取消后清理。录音只在私有缓存中暂存，不创建会议或生成逐字稿/纪要。“添加”同样直接录制，先完成录音再填写姓名（1–80 字符），点击“保存声纹”后创建独立命名档案；不再打开文件选择器，也不自动合并到相似声纹。未填写姓名或取消不会创建档案。沿用单人、样本质量与档案容量检查，失败不改旧档案。SpeakerControlsTest 覆盖添加时先录制再命名的入口、更新入口和取消，不隐式启动麦克风测试。RecordedVoiceProfileTest 覆盖填写姓名后创建独立档案（相似声纹不覆盖已有身份）、姓名校验和临时录音清理。
+
+
+## Android local summaries
+
+When editing local-summary inference, downloads, settings or tests, read [docs/android-local-summary.md](docs/android-local-summary.md). LOCAL is a third summary provider; ASR selection is independent. Preserve existing provider defaults and credentials. Catalog revisions/hashes and no-thinking formats live in LocalSummaryModels.kt / LocalSummaryClient.kt. Native GGML symbols are isolated from Whisper; maintain that boundary when upgrading dependencies. JVM checks cannot substitute for opt-in native device tests. Model quality and memory/thermal claims require real-device evidence.
+
+Android transcription and summary services use dropdown selectors. Settings show provider-specific fields only inside the selected transcription or summary service. Switching providers preserves hidden credentials and model choices; Gemini settings share the same saved key/model across both stages.

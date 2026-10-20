@@ -1,6 +1,6 @@
 # Meeting Recorder
 
-A meeting recorder that transcribes audio and generates structured notes using Google Gemini.
+A meeting recorder that transcribes audio and generates structured notes with cloud or local models.
 
 This repository is a monorepo with two independent apps — a Linux desktop applet and a native Android app — that share the same storage format so recordings are accessible from both.
 
@@ -465,10 +465,114 @@ Transcripts are saved as soon as transcription completes, before requesting a su
 
 ### Android 实时录音降噪
 
-在设置中打开“录音实时降噪（GTCRN）”并保存，下一次 App 内录音生效。模型随安装包附带，约 523 KiB，默认关闭。开启后以 16 kHz 单声道采集，同时保留原始和降噪 AAC 录音；Audio 页可切换回放。自动转写优先使用完整的降噪版本，降噪失败或处理跟不上时回退原音。两份音频会占用更多存储。系统录音机导入的旧音频不经过此实时链路。
+在设置中打开“录音实时降噪”并选择方案后保存，下一次 App 内录音生效。DPDFNet8（人声保留，约 14 MB）和 GTCRN（轻量，约 523 KiB）均随安装包附带，降噪开关默认关闭，方案默认 DPDFNet8。开启后以 16 kHz 单声道采集，同时保留原始和降噪 AAC 录音；Audio 页可切换回放。自动转写优先使用完整的降噪版本，降噪失败或处理跟不上时回退原音。两份音频会占用更多存储。系统录音机导入的旧音频不经过此实时链路。
 
 此版本的录音服务在录制期间保持 CPU 唤醒，但不能保证系统强制结束后继续录音。降噪可能影响远处或轻声发言，也不保证提高转写准确率。测试脚本、公开样本输出和结果分别位于 tools/benchmark_gtcrn.py 与 deliverables/denoise-tests；本机结果不能代替 Android 真机验证。
 
 ### 录完后手动转写
 
 停止录音后仅保存音频，显示“录音已保存”。点击“查看会议”，打开刚才的录音，再手动生成文字和摘要。录音无需提前配置转写或摘要 Key；自动转换倒计时选项已移除。开启实时降噪时仍在录制期间处理并保留两份音频，转写与摘要由用户另外触发。
+
+
+### Android 会议纪要模板与版本
+
+设置 → 常规中可保存默认会议类型（通用会议、项目周会、需求评审、技术评审、客户沟通、头脑风暴）和详细程度（速览、标准、详细）。保留现有摘要语言偏好及自定义提示词；Gemini 与 DeepSeek 共用模板组装规则。类型决定关注点，详细程度决定信息保留量，未讨论的栏目不填充。
+
+会议详情 → 生成纪要，或右上角 → 重新生成，可选择类型、详细程度与语言。有逐字稿时直接复用，没有时先转写录音。**生成完成后直接保存并显示 Notes**，无需“保留原版 / 采用此版本”确认。旧版自动保存在会议目录的 `notes-history/*.json`，需要时从历史版本查看或恢复。
+
+Transcript 默认按原有时间戳排序、突出显示时间，保留多行发言内容；无时间戳的旧文本保留原文，不编造时间。日常 Notes 和 Transcript 隐藏 `[P1]` 等内部引用标记；历史原文与磁盘原始内容保持完整。生成提示词不再要求在正文显示这些编号。
+
+历史版本记录正文、源逐字稿、模板/详细程度/语言、模型与提示词。生成或归档失败不会替换原有纪要。历史版本的恢复和关闭按钮各占一行，避免小屏截断；这些控件只在主动打开历史版本时出现。`notes.md` 和 `meeting.json` 的格式保持兼容 Linux。
+
+模板结构参考（独立编写提示词，非复制模板正文）：
+- [Confluence 通用会议纪要](https://www.atlassian.com/software/confluence/templates/meeting-notes/)：按议题保留讨论、决定及行动项，并记录决定依据。
+- [Confluence 周会记录](https://www.atlassian.com/software/confluence/templates/weekly-meeting-notes)：关注持续跟进、决策和下一步。
+- [Notion 会议模板分类](https://www.notion.com/templates/category/meetings)：提供不同会议场景的组织参考。
+
+验证：模板/粒度组合、原文插值、引用范围、HTTP 参数、配置兼容、版本恢复、保存失败保护以及自动保存、历史恢复和生成失败保护的 JVM 测试；Compose 测试覆盖原有任务进度和新选项/预览操作。离线测试不代表真实模型的内容质量、真机布局或长会议效果验证。
+
+### Android 自动声纹与管理
+
+声纹识别默认可用，无需单独开启。首次启动会在后台准备约 28 MiB 的模型；录音和转写不等待下载。录音保存后自动在本机分析 A/B/C 并入库，已有清晰匹配会沿用档案，未匹配声音保存为“未命名 1、2…”。不再弹出命名确认、选择样本或额外保存步骤。
+
+设置 → **声纹**（也可从会议右上角菜单 → **声纹管理**）提供：
+- **试听、命名、删除**：管理自动收集的档案，删除不影响会议录音和已保存的文字。
+- **更新**：选择只包含该说话人的清晰录音，追加新样本；保留已有样本，支持不同发声状态。
+- **添加**：先录制本人的声音，再填写姓名保存为新档案。样本支持逐份试听和移除。
+
+会议页保留纪要、逐字稿、录音的原有布局，录音结束后直接保存。声纹分析、存储或模型准备失败不会阻塞正常转写和保存。分人转写遇到局部空识别，会使用完整录音重试，不再把一个空片段视为整场没有语音；认证、网络等其他错误仍正常报告，取消操作不重试。
+
+本场按首次发言分配 A/B/C，跨会议只复用声纹档案；匹配阈值是启发式而非准确率保证。每人每场最多 3 份 2–6 秒清晰样本，每份档案最多 20 份样本；过短、过静、明显削波及检测到的重叠片段不入库。自动匹配要求相似度至少 0.8，且领先第二候选至少 0.1；本场不同标签不关联同一档案。匹配不足会建立新档案，可在管理页修正命名/删除。噪声、相似声音、感冒/嘶哑仍可能导致错分或重复建档。删除的档案不会被同一份缓存分析自动重新创建。
+
+模型、声纹向量和试听片段放在 `noBackupFilesDir`；公共会议目录只新增一个 `speakers.json` 分析引用。逐字稿与纪要保持原有格式。复制会议不会共享另一场仍存在会议的身份；重命名会议后可继续读取关联。跨设备复制或清除应用数据后，需要重新分析本地说话人。模型版本不同的声纹不会相互匹配。
+
+模型来源与许可：
+- [pyannote segmentation 3.0 ONNX INT8](https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/tree/9403a6902bb58e3d5ae8c7e77c3422de279db2e0)，MIT（CNRS）；附带许可证位于 assets/licenses/pyannote-segmentation-MIT.txt。
+- [3D-Speaker CAMPPlus 中英模型](https://huggingface.co/csukuangfj/speaker-embedding-models/tree/0743f301363dec56491a490f6d6cbc9d67f9a3bf)，[上游 3D-Speaker](https://github.com/modelscope/3D-Speaker)，附带其 Apache-2.0 许可证；实际模型文件名与 SHA 固定在 SpeakerModelStore.kt。
+- [sherpa-onnx Kotlin 分人示例](https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.8/kotlin-api-examples/test_offline_speaker_diarization.kt)。
+
+测试覆盖编号、跨窗口毫秒时间线、重叠区间、质量筛选、多个声纹样本、模型不兼容、每场隔离、自动建档/匹配/删除后不重建、追加/删除/试听文件、空片段整段重试、失败回滚与精简管理界面。`SpeakerDeviceTest` 为显式开启的隔离真机测试，只使用暂存的公开双人音频，不录制麦克风、不调用云 API、不修改用户会议。运行示例：
+
+```bash
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+# 在应用 cache/speaker-device-test/models/ 暂存两个固定模型，
+# 在 cache/speaker-device-test/two-speakers.wav 暂存上游公开样本后运行：
+adb shell am instrument -w -e speakerTest true -e class com.github.meetingrecorder.SpeakerDeviceTest com.github.meetingrecorder.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+双人测试音频为 [上游 1-two-speakers-en.wav](https://huggingface.co/csukuangfj/speaker-embedding-models/blob/0743f301363dec56491a490f6d6cbc9d67f9a3bf/1-two-speakers-en.wav)，512044 bytes，SHA-256 `f1c877dc01595e28be7147bf2fe38e5268147a868bf3fdb5c37b97f5940e21f3`；只暂存到测试缓存，不打包进 APK。
+
+Android CI 和发布工作流在 Gradle 配置前接受 SDK（含预览）许可并安装项目指定的 NDK 30.0.16138531 / CMake 4.1.2，避免干净 runner 在 ktlint 阶段因缺少原生工具链许可失败。
+
+### Android 模板提示词
+
+设置 → 提示词中选择会议类型，会显示该模板独立的中文摘要提示词；修改后点击保存，可恢复当前模板默认值。生成时按实际所选模板读取配置，会议内临时选择也生效。转写与标题提示词独立于摘要模板。全局补充要求默认留空，兼容保留旧版自定义摘要提示词；模板自定义按枚举名存储，留空使用内置默认。摘要版本记录该模板提示词与全局补充要求。测试覆盖模板切换、独立持久化、恢复默认和原文插值。
+
+ASR 生命周期：一次会议转写通过 `TranscriptionClient.withSession` 共用一个本地 Qwen/Whisper 实例，所有说话片段和空片段后的整段重试复用该实例，完成/失败/取消后释放。先完成声纹分析再加载 ASR，避免分人模型与 ASR 同时常驻。当前易用性修改按用户要求仅 build + adb install -r，不执行测试。
+
+说话人计数只包含有有效声纹证据的分组。分人模型产生的过短/低质量碎片保留为未确认，不直接创建新字母或声纹档案；原始语音内容仍参与转写。分组策略版本升为 v2，使旧分组缓存下次处理时重算。ASR 与声纹在同一次用户操作中完成，内部仍为两个独立模型。
+
+重新处理已有录音：会议右上角菜单及 Transcript 页提供“重新转写并生成”，直接使用当前保存的录音，重跑 ASR 和纪要生成，不重新录制；使用当前纪要的模板选项（没有记录时使用默认选项）。结果自动保存，旧纪要自动归档。菜单“仅重新生成纪要”复用现有 Transcript。处理中禁用重复操作。
+
+新增“对话翻译”内容模板：独立中文提示词，保留说话人、时间戳、问答顺序并逐段翻译，不执行摘要概览/详细程度/行动项策略。支持原文＋中英互译、译为中文/英文/日文；原语言旧偏好在此模式按原文＋互译处理。重新转写及仅重新生成均先打开模板选择，默认沿用当前已保存版本的选项，确认后自动生成并保存。未确定说话人统一显示“未确认”，旧内容阅读时兼容替换旧标签。
+
+### DPDFNet8 人声保留降噪
+
+设置 → 通用 → 录音实时降噪 → 降噪方案，可选“DPDFNet8（人声保留，默认）”和“GTCRN（轻量）”。保存后对下一次录音生效；保留已有方案选择和降噪开关状态，开关默认关闭。DPDFNet8 使用 16 kHz 单声道、CPU 4 线程，GTCRN 使用 CPU 1 线程。不叠加 Android 系统 NS，不添加音量均衡或自动增益。
+
+DPDFNet8 固定采用 6 dB 抑制上限：先补偿该模型在 sherpa-onnx 1.13.8 中四跳共 640 样本（40 ms）的输出延迟，再将对齐的原始 PCM 与增强 PCM 按约 50.1% / 49.9% 混合。不是直接回放原音，也不是给流式接口设置无效的 attenuationLimitDb；该字段仅在离线接口实现。流式结束补零排出延迟尾音，精确检查输入/输出样本数；只缓存待对齐片段，积压过大立即停止降噪分支。保留轻声的代价是保留部分残余噪声。参数和延迟绑定当前模型/runtime，升级时须重新验证。
+
+保留原始 recording.m4a 和完整的 recording-denoised.m4a；初始化、队列积压、时长异常仍保护原音。自动转写优先完整降噪文件，已有录音不自动改写。denoise-model.txt 记录模型、6 dB 上限和 640 样本对齐参数。SpeechPreservingDenoiserTest 覆盖延迟对齐、过度抑制下的语音保留、任意块边界、短录音尾音和积压失败；DenoisingBranchTest 覆盖分支和文件完整性。原生模型质量和实时速度需要真机验证，JVM 测试不能代替。SpeechPreservingDeviceTest 是显式传入私有缓存 PCM16 WAV 样本和参考音频的本地回归，检查正式 ModelDenoiser 路径、AAC 编码、样本数、波形误差和实时速度；不启动麦克风、不修改会议。
+
+已用用户授权的 14:32 整段录音作本地对照：原音转写 83 字，旧全强度降噪仅 13 字，离线 6 dB 候选恢复 83 字且与原音转写一致，用户试听认可。此为单个样本的转写一致性，不是带人工标注的准确率评测，也不代表所有会议环境。流式对齐候选与获认可离线候选的波形相关系数约 0.9999。私人录音与识别内容不提交仓库。
+
+模型随 APK 附带，官方来源 https://huggingface.co/Ceva-IP/DPDFNet/resolve/dd6818d00f50c836fed43a6243ebe49116de5964/onnx/dpdfnet8.onnx ，14542517 bytes，SHA-256 899d4f23f3ff86edbffa8c537e4bcbdc49da1b4e84e0ef390611e0604a3b26cb。Apache-2.0 许可证附于 assets/licenses/DPDFNet-APACHE-2.0.txt（上游 ceva-ip/DPDFNet 9bd9844a227bb6aa57e55588d8d0e961fcff1c46）。
+
+真机回归（2026-10-19，PKG110）：输入 491520 样本 / 30.72 秒，处理 11.94 秒（RTF 0.389），与认可离线候选的波形相关系数 0.999923，相对 RMS 误差 0.01243，完整样本数一致。仅代表该样本和本次设备状态；长期录音的发热/耗电未据此验证。覆盖安装使用 adb install -r，保留现有数据和降噪开关/模型选择。
+
+声纹管理的“更新”直接打开录制弹窗，不再选择文件。用户显式开始后录制本人声音，建议 10–20 秒，满 5 秒可完成，30 秒自动结束并提交当前档案；补充样本而非覆盖已有样本。会议正在录音时禁止并行录制。取消、页面离开或应用进入后台停止录音并删除临时文件，交给 ViewModel 的录音在处理完成/失败/取消后清理。录音只在私有缓存中暂存，不创建会议或生成逐字稿/纪要。“添加”同样直接录制，先完成录音再填写姓名（1–80 字符），点击“保存声纹”后创建独立命名档案；不再打开文件选择器，也不自动合并到相似声纹。未填写姓名或取消不会创建档案。沿用单人、样本质量与档案容量检查，失败不改旧档案。SpeakerControlsTest 覆盖添加时先录制再命名的入口、更新入口和取消，不隐式启动麦克风测试。RecordedVoiceProfileTest 覆盖填写姓名后创建独立档案（相似声纹不覆盖已有身份）、姓名校验和临时录音清理。
+
+
+### Android 本地摘要模型
+
+设置 → 通用 → 摘要服务 → **本地模型**。下载模型后点单选按钮，点击页面底部“保存”；下载与选择是两个独立操作。可随时切回 Gemini / DeepSeek，原有密钥、转写模型、会议和模板不变。只重新生成纪要时复用已保存逐字稿，不需要再次转写。
+
+| 模型（Q4_K_M） | 下载大小（十进制 GB） |
+|---|---:|
+| Qwen3.5 2B | 1.28 |
+| Qwen3.5 4B | 2.74 |
+| Qwen3 4B Instruct 2507 | 2.50 |
+| Google Gemma 4 E2B | 3.11 |
+| Google Gemma 4 E4B | 4.98 |
+| Microsoft Phi-4 mini Instruct | 2.49 |
+
+模型来自 Unsloth 发布的 GGUF，固定 revision、文件大小和 SHA-256；下载完成且校验通过才可用。支持下载进度、取消和删除。取消会删除未完成的单文件，重试从头下载。下载任务属于设置页面 ViewModel，离开设置会取消未完成下载。模型文件在应用私有目录，不进入系统备份。
+
+推理通过 APK 内的 llama.cpp ARM64 CPU 库完成，无需另装 App。本地摘要和标题不调用云 API；转写服务仍独立选择。文件大小不等于运行内存，速度、发热和输出质量需按手机实测；16 GB 手机可先试较小模型。默认选择 Qwen3.5 4B，但不自动下载或切换现有服务。
+
+中文、英文、中英混合逐字稿共享同一纪要策略，保留数字、否定和未确定事项。长会议按实际 tokenizer 分段提炼后合并，覆盖全部输入，但多轮压缩仍可能丢失细节；对话翻译逐段拼接，不走摘要压缩。达到输出上限会报错，不保存截断内容。当前上下文上限 8192 token，关闭思考模式；不启用 GPU/NPU。
+
+构建与测试边界见 [本地摘要开发说明](docs/android-local-summary.md)。
+
+Android transcription and summary services use dropdown selectors. Settings show provider-specific fields only inside the selected transcription or summary service. Switching providers preserves hidden credentials and model choices; Gemini settings share the same saved key/model across both stages.

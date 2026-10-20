@@ -24,6 +24,12 @@ class SummaryProviderTest {
         val config = Config(context)
         assertEquals(SummaryProvider.GEMINI, config.summaryProvider)
         assertEquals(Config.DEFAULT_DEEPSEEK_MODEL, config.deepSeekModel)
+        assertEquals(com.github.meetingrecorder.data.MeetingTemplate.GENERAL, config.summaryTemplate)
+        assertEquals(com.github.meetingrecorder.data.SummaryDetail.STANDARD, config.summaryDetail)
+        whenever(prefs.getString("summary_template", "GENERAL")).thenReturn("future-template")
+        whenever(prefs.getString("summary_detail", "STANDARD")).thenReturn("future-detail")
+        assertEquals(com.github.meetingrecorder.data.MeetingTemplate.GENERAL, config.summaryTemplate)
+        assertEquals(com.github.meetingrecorder.data.SummaryDetail.STANDARD, config.summaryDetail)
         whenever(prefs.getString("summary_provider", "GEMINI")).thenReturn("future-provider")
         assertEquals(SummaryProvider.GEMINI, config.summaryProvider)
     }
@@ -33,7 +39,7 @@ class SummaryProviderTest {
         val config = mock<Config>()
         val gemini = FakeSummaryClient("gemini")
         val deepSeek = FakeSummaryClient("deepseek")
-        val selected = SelectedSummaryClient(config, gemini, deepSeek)
+        val selected = SelectedSummaryClient(config, gemini, deepSeek, FakeSummaryClient("local"))
         whenever(config.summaryProvider).thenReturn(SummaryProvider.GEMINI)
         assertEquals("gemini:transcript", selected.summarize("transcript"))
         whenever(config.summaryProvider).thenReturn(SummaryProvider.DEEPSEEK)
@@ -41,6 +47,9 @@ class SummaryProviderTest {
         assertEquals("deepseek:notes", selected.generateTitle("notes"))
         assertEquals(1, gemini.calls)
         assertEquals(2, deepSeek.calls)
+        whenever(config.summaryProvider).thenReturn(SummaryProvider.LOCAL)
+        assertEquals("local:transcript", selected.summarize("transcript"))
+        assertEquals("local:notes", selected.generateTitle("notes"))
     }
 
     private class FakeSummaryClient(private val name: String) : SummaryClient {

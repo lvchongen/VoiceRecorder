@@ -14,7 +14,7 @@ import java.nio.ByteOrder
 import kotlin.coroutines.coroutineContext
 
 /** A bounded WAV segment, with its real position in decoded audio (not speaker timestamps). */
-data class AudioChunk(val wav: ByteArray, val startSeconds: Long)
+data class AudioChunk(val wav: ByteArray, val startSeconds: Long, val startMilliseconds: Long = startSeconds * 1000)
 
 fun interface AudioChunks {
     suspend fun read(file: File, consume: suspend (AudioChunk) -> Unit)
@@ -54,7 +54,7 @@ class PcmChunker(private val sampleRate: Int, private val channels: Int, private
         header.putInt(16).putShort(1).putShort(channels.toShort()).putInt(sampleRate)
         header.putInt(sampleRate * frameBytes).putShort(frameBytes.toShort()).putShort(16)
         header.put("data".toByteArray()).putInt(pcm.size)
-        val chunk = AudioChunk(header.array() + pcm, emittedBytes / (sampleRate.toLong() * frameBytes))
+        val chunk = AudioChunk(header.array() + pcm, emittedBytes / (sampleRate.toLong() * frameBytes), emittedBytes * 1000 / (sampleRate.toLong() * frameBytes))
         emittedBytes += pcm.size
         consume(chunk)
     }
