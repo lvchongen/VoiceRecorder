@@ -118,7 +118,8 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
     val modelBusy by viewModel.modelBusy.collectAsState()
     val installedModels by viewModel.installedModels.collectAsState()
     val transcriptionProvider by viewModel.transcriptionProvider.collectAsState()
-    var transcriptionProviderDraft by remember { mutableStateOf(transcriptionProvider) }
+    var transcriptionProviderDraft by rememberSaveable { mutableStateOf(transcriptionProvider) }
+    var transcriptionMenuExpanded by remember { mutableStateOf(false) }
     val aliApiKey by viewModel.aliApiKey.collectAsState()
     var aliApiKeyDraft by remember { mutableStateOf(aliApiKey) }
     val aliBaseUrl by viewModel.aliBaseUrl.collectAsState()
@@ -179,10 +180,28 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
         }
         HorizontalDivider()
         Text("转写服务", style = MaterialTheme.typography.titleMedium)
-        TranscriptionProvider.entries.filter { it != TranscriptionProvider.QWEN }.forEach { provider ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = transcriptionProviderDraft == provider, onClick = { transcriptionProviderDraft = provider })
-                Text(provider.label)
+        ExposedDropdownMenuBox(
+            expanded = transcriptionMenuExpanded,
+            onExpandedChange = { transcriptionMenuExpanded = it },
+        ) {
+            OutlinedTextField(
+                value = transcriptionProviderDraft.label,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("转写服务") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = transcriptionMenuExpanded) },
+                modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+            )
+            ExposedDropdownMenu(expanded = transcriptionMenuExpanded, onDismissRequest = { transcriptionMenuExpanded = false }) {
+                TranscriptionProvider.entries.filter { it != TranscriptionProvider.QWEN }.forEach { provider ->
+                    DropdownMenuItem(
+                        text = { Text(provider.label) },
+                        onClick = {
+                            transcriptionProviderDraft = provider
+                            transcriptionMenuExpanded = false
+                        },
+                    )
+                }
             }
         }
         if (transcriptionProviderDraft == TranscriptionProvider.WHISPER) {
