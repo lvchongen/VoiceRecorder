@@ -154,7 +154,6 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
     var modelDraft by rememberSaveable { mutableStateOf(model) }
     var audioQualityDraft by rememberSaveable { mutableStateOf(audioQuality) }
     var dndDuringRecordingDraft by rememberSaveable { mutableStateOf(dndDuringRecordingEnabled) }
-    var modelMenuExpanded by remember { mutableStateOf(false) }
     var qualityMenuExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -215,46 +214,8 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
             OutlinedTextField(value = aliBaseUrlDraft, onValueChange = { aliBaseUrlDraft = it }, label = { Text("阿里云接口地址") }, supportingText = { Text("北京默认 dashscope.aliyuncs.com；新加坡用 dashscope-intl.aliyuncs.com，保留 /compatible-mode/v1") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = aliModelDraft, onValueChange = { aliModelDraft = it }, label = { Text("转写模型") }, supportingText = { Text("默认 qwen3-asr-flash") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         }
-        Text("Gemini（仅选择 Gemini 转写或摘要时需要）", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(
-            value = apiKeyDraft,
-            onValueChange = { apiKeyDraft = it },
-            label = { Text(stringResource(R.string.label_gemini_api_key)) },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-
-        ExposedDropdownMenuBox(
-            expanded = modelMenuExpanded,
-            onExpandedChange = { modelMenuExpanded = it },
-        ) {
-            OutlinedTextField(
-                value = modelDraft,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text(stringResource(R.string.label_model)) },
-                trailingIcon = {
-                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuExpanded)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor(MenuAnchorType.PrimaryNotEditable),
-            )
-            ExposedDropdownMenu(
-                expanded = modelMenuExpanded,
-                onDismissRequest = { modelMenuExpanded = false },
-            ) {
-                viewModel.availableModels.forEach { m ->
-                    DropdownMenuItem(
-                        text = { Text(m) },
-                        onClick = {
-                            modelDraft = m
-                            modelMenuExpanded = false
-                        },
-                    )
-                }
-            }
+        if (transcriptionProviderDraft == TranscriptionProvider.GEMINI) {
+            GeminiSettings(apiKeyDraft, { apiKeyDraft = it }, modelDraft, { modelDraft = it }, viewModel.availableModels)
         }
 
         HorizontalDivider()
@@ -290,6 +251,9 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
                     )
                 }
             }
+        }
+        if (providerDraft == SummaryProvider.GEMINI) {
+            GeminiSettings(apiKeyDraft, { apiKeyDraft = it }, modelDraft, { modelDraft = it }, viewModel.availableModels)
         }
         if (providerDraft == SummaryProvider.LOCAL) {
             com.github.meetingrecorder.data.LocalSummaryModel.all.forEach { localModel ->
@@ -546,3 +510,55 @@ private fun PromptField(
 
 private fun Context.hasDndAccess(): Boolean =
     getSystemService(NotificationManager::class.java).isNotificationPolicyAccessGranted
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GeminiSettings(
+    apiKeyDraft: String,
+    onApiKeyChange: (String) -> Unit,
+    modelDraft: String,
+    onModelChange: (String) -> Unit,
+    availableModels: List<String>,
+) {
+    var modelMenuExpanded by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = apiKeyDraft,
+        onValueChange = onApiKeyChange,
+        label = { Text(stringResource(R.string.label_gemini_api_key)) },
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+    )
+
+    ExposedDropdownMenuBox(
+        expanded = modelMenuExpanded,
+        onExpandedChange = { modelMenuExpanded = it },
+    ) {
+        OutlinedTextField(
+            value = modelDraft,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(stringResource(R.string.label_model)) },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuExpanded)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(
+            expanded = modelMenuExpanded,
+            onDismissRequest = { modelMenuExpanded = false },
+        ) {
+            availableModels.forEach { m ->
+                DropdownMenuItem(
+                    text = { Text(m) },
+                    onClick = {
+                        onModelChange(m)
+                        modelMenuExpanded = false
+                    },
+                )
+            }
+        }
+    }
+}

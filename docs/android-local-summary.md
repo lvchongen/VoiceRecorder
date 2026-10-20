@@ -35,3 +35,5 @@ Replace summaryModel with a catalog ID for other models. The test checks native 
 - https://ai.google.dev/gemma/docs/core/model_card_4
 - https://huggingface.co/microsoft/Phi-4-mini-instruct
 - Exact quantized file URLs, revisions and sizes: LocalSummaryModels.kt
+
+Android settings show provider-specific fields only inside the selected transcription or summary service. Switching providers preserves hidden credentials and model choices; Gemini settings share the same saved key/model across both stages.

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performScrollTo
 import com.github.meetingrecorder.data.LocalSummaryModel
 import com.github.meetingrecorder.data.LocalSummaryModelStore
 import com.github.meetingrecorder.data.SummaryProvider
+import com.github.meetingrecorder.data.TranscriptionProvider
 import com.github.meetingrecorder.ui.settings.SettingsScreen
 import com.github.meetingrecorder.ui.settings.SettingsViewModel
 import org.junit.Assert.assertEquals
@@ -43,5 +44,45 @@ class LocalSummarySettingsTest {
         compose.onNodeWithText("保存").performScrollTo().performClick()
         assertEquals("qwen35-2b", AppConfig(context).localSummaryModel)
         assertEquals(SummaryProvider.LOCAL, AppConfig(context).summaryProvider)
+    }
+
+    @Test fun `Gemini transcription keeps its settings with local summaries`() {
+        showProviders(TranscriptionProvider.GEMINI, SummaryProvider.LOCAL)
+        compose.onNodeWithText("Gemini 密钥").assertExists()
+        compose.onNodeWithText("Qwen3.5 2B").assertExists()
+        compose.onNodeWithText("DeepSeek 密钥").assertDoesNotExist()
+    }
+
+    @Test fun `Gemini summary settings appear with local transcription`() {
+        showProviders(TranscriptionProvider.WHISPER, SummaryProvider.GEMINI)
+        compose.onNodeWithText("Gemini 密钥").assertExists()
+        compose.onNodeWithText("Qwen3.5 2B").assertDoesNotExist()
+        compose.onNodeWithText("DeepSeek 密钥").assertDoesNotExist()
+    }
+
+    @Test fun `DeepSeek settings exclude other summary providers`() {
+        showProviders(TranscriptionProvider.WHISPER, SummaryProvider.DEEPSEEK)
+        compose.onNodeWithText("DeepSeek 密钥").assertExists()
+        compose.onNodeWithText("Gemini 密钥").assertDoesNotExist()
+        compose.onNodeWithText("Qwen3.5 2B").assertDoesNotExist()
+    }
+
+    @Test fun `local providers hide cloud configuration`() {
+        compose.mainClock.autoAdvance = false
+        showProviders(TranscriptionProvider.WHISPER, SummaryProvider.LOCAL)
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("Gemini 密钥").assertDoesNotExist()
+        compose.onNodeWithText("DeepSeek 密钥").assertDoesNotExist()
+        compose.onNodeWithText("Qwen3.5 2B").assertExists()
+    }
+
+    private fun showProviders(transcription: TranscriptionProvider, summary: SummaryProvider) {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("meeting_recorder", Context.MODE_PRIVATE).edit().clear().commit()
+        val config = AppConfig(context)
+        config.transcriptionProvider = transcription
+        config.summaryProvider = summary
+        val vm = SettingsViewModel(config, mock(), mock(), mock())
+        compose.setContent { MaterialTheme { SettingsScreen({}, vm) } }
     }
 }

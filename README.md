@@ -574,3 +574,5 @@ DPDFNet8 固定采用 6 dB 抑制上限：先补偿该模型在 sherpa-onnx 1.13
 中文、英文、中英混合逐字稿共享同一纪要策略，保留数字、否定和未确定事项。长会议按实际 tokenizer 分段提炼后合并，覆盖全部输入，但多轮压缩仍可能丢失细节；对话翻译逐段拼接，不走摘要压缩。达到输出上限会报错，不保存截断内容。当前上下文上限 8192 token，关闭思考模式；不启用 GPU/NPU。
 
 构建与测试边界见 [本地摘要开发说明](docs/android-local-summary.md)。
+
+Android settings show provider-specific fields only inside the selected transcription or summary service. Switching providers preserves hidden credentials and model choices; Gemini settings share the same saved key/model across both stages.
