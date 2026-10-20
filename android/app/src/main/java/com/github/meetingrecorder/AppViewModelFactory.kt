@@ -38,6 +38,6 @@ val appViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         MeetingsViewModel(app, app.container.meetingRepository)
     }
     initializer {
-        SettingsViewModel(meetingRecorderApp.container.config, meetingRecorderApp.container.whisperModels, meetingRecorderApp.container.qwenModels)
+        SettingsViewModel(meetingRecorderApp.container.config, meetingRecorderApp.container.whisperModels, meetingRecorderApp.container.qwenModels, meetingRecorderApp.container.localSummaryModels)
     }
 }

@@ -19,7 +19,46 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 // Plain ViewModel — no Context needed; Config is constructor-injected via appViewModelFactory.
-class SettingsViewModel(private val config: Config, private val models: WhisperModelStore, private val qwenModels: QwenModelStore) : ViewModel() {
+class SettingsViewModel(private val config: Config, private val models: WhisperModelStore, private val qwenModels: QwenModelStore, private val localModels: com.github.meetingrecorder.data.LocalSummaryModelStore) : ViewModel() {
+
+    val localSummaryModel = MutableStateFlow(config.localSummaryModel)
+    val installedSummaryModels = MutableStateFlow(com.github.meetingrecorder.data.LocalSummaryModel.all.filter { localModels.installed(it) }.map { it.id }.toSet())
+    val summaryModelStatus = MutableStateFlow("")
+    val summaryModelBusy = MutableStateFlow(false)
+    private var summaryModelJob: Job? = null
+    fun setLocalSummaryModel(id: String) {
+        config.localSummaryModel = id
+        localSummaryModel.value = id
+    }
+    fun downloadSummaryModel(model: com.github.meetingrecorder.data.LocalSummaryModel) = summaryModelAction {
+        localModels.download(model) { summaryModelStatus.value = "${model.label}：$it%" }
+        summaryModelStatus.value = "${model.label} 下载完成，校验通过"
+    }
+    fun deleteSummaryModel(model: com.github.meetingrecorder.data.LocalSummaryModel) = summaryModelAction {
+        localModels.delete(model)
+        summaryModelStatus.value = "${model.label} 已删除"
+    }
+    fun cancelSummaryModelDownload() {
+        summaryModelJob?.cancel()
+    }
+    private fun summaryModelAction(action: suspend () -> Unit) {
+        if (summaryModelBusy.value) return
+        summaryModelBusy.value = true
+        summaryModelStatus.value = "准备中…"
+        summaryModelJob = viewModelScope.launch {
+            try {
+                action()
+            } catch (e: CancellationException) {
+                summaryModelStatus.value = "已取消"
+                throw e
+            } catch (e: Exception) {
+                summaryModelStatus.value = e.message ?: "模型操作失败"
+            } finally {
+                installedSummaryModels.value = com.github.meetingrecorder.data.LocalSummaryModel.all.filter { localModels.installed(it) }.map { it.id }.toSet()
+                summaryModelBusy.value = false
+            }
+        }
+    }
 
     val qwenInstalled = MutableStateFlow(qwenModels.installed())
     fun downloadQwen() = modelAction {

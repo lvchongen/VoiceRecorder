@@ -1,6 +1,6 @@
 # Meeting Recorder
 
-A meeting recorder that transcribes audio and generates structured notes using Google Gemini.
+A meeting recorder that transcribes audio and generates structured notes with cloud or local models.
 
 This repository is a monorepo with two independent apps — a Linux desktop applet and a native Android app — that share the same storage format so recordings are accessible from both.
 
@@ -552,3 +552,25 @@ DPDFNet8 固定采用 6 dB 抑制上限：先补偿该模型在 sherpa-onnx 1.13
 真机回归（2026-10-19，PKG110）：输入 491520 样本 / 30.72 秒，处理 11.94 秒（RTF 0.389），与认可离线候选的波形相关系数 0.999923，相对 RMS 误差 0.01243，完整样本数一致。仅代表该样本和本次设备状态；长期录音的发热/耗电未据此验证。覆盖安装使用 adb install -r，保留现有数据和降噪开关/模型选择。
 
 声纹管理的“更新”直接打开录制弹窗，不再选择文件。用户显式开始后录制本人声音，建议 10–20 秒，满 5 秒可完成，30 秒自动结束并提交当前档案；补充样本而非覆盖已有样本。会议正在录音时禁止并行录制。取消、页面离开或应用进入后台停止录音并删除临时文件，交给 ViewModel 的录音在处理完成/失败/取消后清理。录音只在私有缓存中暂存，不创建会议或生成逐字稿/纪要。“添加”同样直接录制，先完成录音再填写姓名（1–80 字符），点击“保存声纹”后创建独立命名档案；不再打开文件选择器，也不自动合并到相似声纹。未填写姓名或取消不会创建档案。沿用单人、样本质量与档案容量检查，失败不改旧档案。SpeakerControlsTest 覆盖添加时先录制再命名的入口、更新入口和取消，不隐式启动麦克风测试。RecordedVoiceProfileTest 覆盖填写姓名后创建独立档案（相似声纹不覆盖已有身份）、姓名校验和临时录音清理。
+
+
+### Android 本地摘要模型
+
+设置 → 通用 → 摘要服务 → **本地模型**。下载模型后点单选按钮，点击页面底部“保存”；下载与选择是两个独立操作。可随时切回 Gemini / DeepSeek，原有密钥、转写模型、会议和模板不变。只重新生成纪要时复用已保存逐字稿，不需要再次转写。
+
+| 模型（Q4_K_M） | 下载大小（十进制 GB） |
+|---|---:|
+| Qwen3.5 2B | 1.28 |
+| Qwen3.5 4B | 2.74 |
+| Qwen3 4B Instruct 2507 | 2.50 |
+| Google Gemma 4 E2B | 3.11 |
+| Google Gemma 4 E4B | 4.98 |
+| Microsoft Phi-4 mini Instruct | 2.49 |
+
+模型来自 Unsloth 发布的 GGUF，固定 revision、文件大小和 SHA-256；下载完成且校验通过才可用。支持下载进度、取消和删除。取消会删除未完成的单文件，重试从头下载。下载任务属于设置页面 ViewModel，离开设置会取消未完成下载。模型文件在应用私有目录，不进入系统备份。
+
+推理通过 APK 内的 llama.cpp ARM64 CPU 库完成，无需另装 App。本地摘要和标题不调用云 API；转写服务仍独立选择。文件大小不等于运行内存，速度、发热和输出质量需按手机实测；16 GB 手机可先试较小模型。默认选择 Qwen3.5 4B，但不自动下载或切换现有服务。
+
+中文、英文、中英混合逐字稿共享同一纪要策略，保留数字、否定和未确定事项。长会议按实际 tokenizer 分段提炼后合并，覆盖全部输入，但多轮压缩仍可能丢失细节；对话翻译逐段拼接，不走摘要压缩。达到输出上限会报错，不保存截断内容。当前上下文上限 8192 token，关闭思考模式；不启用 GPU/NPU。
+
+构建与测试边界见 [本地摘要开发说明](docs/android-local-summary.md)。

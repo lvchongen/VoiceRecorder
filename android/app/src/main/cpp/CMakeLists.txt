@@ -16,3 +16,5 @@ add_subdirectory(vendor/whisper)
 add_library(meeting_whisper SHARED whisper_jni.cpp)
 target_link_libraries(meeting_whisper whisper android log)
 target_link_options(meeting_whisper PRIVATE "-Wl,-z,max-page-size=16384")
+
+include(local_llama.cmake)

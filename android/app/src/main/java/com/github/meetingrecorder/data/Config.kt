@@ -93,6 +93,12 @@ class Config(context: Context) {
             prefs.edit().putString("summary_provider", value.name).apply()
         }
 
+    var localSummaryModel: String
+        get() = prefs.getString("local_summary_model", LocalSummaryModel.DEFAULT_ID) ?: LocalSummaryModel.DEFAULT_ID
+        set(value) {
+            prefs.edit().putString("local_summary_model", value).apply()
+        }
+
     var deepSeekApiKey: String
         get() = prefs.getString("deepseek_api_key", "") ?: ""
         set(value) {

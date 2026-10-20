@@ -226,7 +226,11 @@ class MeetingDetailViewModel(
             _genState.value = GenState.Processing("Starting…")
             try {
                 val provider = config.summaryProvider
-                val model = if (provider == SummaryProvider.DEEPSEEK) config.deepSeekModel else config.model
+                val model = when (provider) {
+                    SummaryProvider.DEEPSEEK -> config.deepSeekModel
+                    SummaryProvider.GEMINI -> config.model
+                    SummaryProvider.LOCAL -> config.localSummaryModel
+                }
                 val prompt = config.templatePrompt(options.template) + "\n\n全局补充要求：\n" + config.summarizationPrompt
                 val result = processor.transcribeAndSummarize(
                     audio,
@@ -268,7 +272,11 @@ class MeetingDetailViewModel(
             _genState.value = GenState.Processing("Generating meeting notes…")
             try {
                 val provider = config.summaryProvider
-                val model = if (provider == SummaryProvider.DEEPSEEK) config.deepSeekModel else config.model
+                val model = when (provider) {
+                    SummaryProvider.DEEPSEEK -> config.deepSeekModel
+                    SummaryProvider.GEMINI -> config.model
+                    SummaryProvider.LOCAL -> config.localSummaryModel
+                }
                 val prompt = config.templatePrompt(options.template) + "\n\n全局补充要求：\n" + config.summarizationPrompt
                 val notes = processor.previewSummary(transcript, options) { _genState.value = GenState.Processing(it) }
                 check(notes.isNotBlank()) { "模型返回了空纪要，请重试。" }

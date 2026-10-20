@@ -60,6 +60,7 @@ class AppContainer(context: Context) {
 
     val config: Config = Config(context)
     val qwenModels = QwenModelStore(File(context.noBackupFilesDir, "qwen3-asr-model"))
+    val localSummaryModels = com.github.meetingrecorder.data.LocalSummaryModelStore(File(context.noBackupFilesDir, "local-summary-models"))
     val whisperModels = WhisperModelStore(File(context.noBackupFilesDir, "whisper-models"))
 
     val speakerModels = SpeakerModelStore(File(context.noBackupFilesDir, "speaker-models"))
@@ -86,7 +87,7 @@ class AppContainer(context: Context) {
         MeetingProcessor(
             geminiClient,
             meetingRepository,
-            summaryClient = SelectedSummaryClient(config, geminiClient, DeepSeekClient(config)),
+            summaryClient = SelectedSummaryClient(config, geminiClient, DeepSeekClient(config), com.github.meetingrecorder.data.LocalSummaryClient(config, localSummaryModels)),
             transcriptionClient = configuredTranscription,
             speakerTranscriptionClient = speakerTranscription,
             onAudioSaved = ::queueSpeakerAnalysis,

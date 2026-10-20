@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -47,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -126,6 +128,11 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
     var summaryOptionsDraft by remember { mutableStateOf(viewModel.summaryOptions) }
     val summaryLanguage by viewModel.summaryLanguage.collectAsState()
     var summaryLanguageDraft by remember { mutableStateOf(summaryLanguage) }
+    val localSummaryModel by viewModel.localSummaryModel.collectAsState()
+    var localSummaryDraft by rememberSaveable { mutableStateOf(localSummaryModel) }
+    val installedSummaryModels by viewModel.installedSummaryModels.collectAsState()
+    val summaryModelStatus by viewModel.summaryModelStatus.collectAsState()
+    val summaryModelBusy by viewModel.summaryModelBusy.collectAsState()
     val summaryProvider by viewModel.summaryProvider.collectAsState()
     val deepSeekApiKey by viewModel.deepSeekApiKey.collectAsState()
     val deepSeekModel by viewModel.deepSeekModel.collectAsState()
@@ -284,6 +291,24 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
                 }
             }
         }
+        if (providerDraft == SummaryProvider.LOCAL) {
+            com.github.meetingrecorder.data.LocalSummaryModel.all.forEach { localModel ->
+                Row(Modifier.fillMaxWidth().selectable(selected = localSummaryDraft == localModel.id, role = Role.RadioButton, onClick = { localSummaryDraft = localModel.id }), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = localSummaryDraft == localModel.id, onClick = null)
+                    Column(Modifier.weight(1f)) {
+                        Text(localModel.label)
+                        Text("Q4_K_M · ${localModel.sizeLabel}" + if (localModel.id in installedSummaryModels) " · 已下载" else "", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (localModel.id in installedSummaryModels) {
+                        TextButton(onClick = { viewModel.deleteSummaryModel(localModel) }, enabled = !summaryModelBusy) { Text("删除") }
+                    } else {
+                        TextButton(onClick = { viewModel.downloadSummaryModel(localModel) }, enabled = !summaryModelBusy) { Text("下载") }
+                    }
+                }
+            }
+            if (summaryModelStatus.isNotEmpty()) Text(summaryModelStatus, style = MaterialTheme.typography.bodySmall)
+            if (summaryModelBusy) TextButton(onClick = { viewModel.cancelSummaryModelDownload() }) { Text("取消下载") }
+        }
         if (providerDraft == SummaryProvider.DEEPSEEK) {
             OutlinedTextField(
                 value = deepSeekKeyDraft,
@@ -399,6 +424,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
                 viewModel.setSummaryOptions(summaryOptionsDraft)
                 viewModel.setSummaryLanguage(summaryLanguageDraft)
                 viewModel.setSummaryProvider(providerDraft)
+                viewModel.setLocalSummaryModel(localSummaryDraft)
                 viewModel.setDeepSeekApiKey(deepSeekKeyDraft)
                 viewModel.setDeepSeekModel(deepSeekModelDraft)
                 viewModel.setApiKey(apiKeyDraft)

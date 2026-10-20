@@ -279,7 +279,7 @@ Stopping a recording finalizes audio and meeting metadata, removes the recording
 
 ## Android summary templates and history
 
-`data/SummaryOptions.kt` defines six meeting types, three detail levels and the shared Gemini/DeepSeek prompt builder. `Config.summaryTemplate` / `summaryDetail` default to GENERAL/STANDARD; existing language and custom prompts remain intact. Source line IDs are added in memory, never written into transcript.md. Mechanical reference validation rejects out-of-range P IDs and absent bracketed HH:MM:SS timestamps; do not describe this as factual verification.
+`data/SummaryOptions.kt` defines six meeting types, three detail levels and the shared cloud/local prompt builder. `Config.summaryTemplate` / `summaryDetail` default to GENERAL/STANDARD; existing language and custom prompts remain intact. Source line IDs are added in memory, never written into transcript.md. Mechanical reference validation rejects out-of-range P IDs and absent bracketed HH:MM:SS timestamps; do not describe this as factual verification.
 
 `MeetingDetailViewModel` immediately saves generated notes through SummaryHistory.adopt for both notes-only and audio-first paths, updates visible notes and metadata, and archives the old version automatically. No generated preview/adoption step. Preview state is used only for explicitly browsing historical versions; restore/close controls use separate full-width rows. Generation or archive failure preserves prior notes. SummaryHistory snapshots retain source/options/provider/model/prompt and remain compatible with Linux.
 
@@ -330,3 +330,8 @@ DPDFNet8 固定采用 6 dB 抑制上限：先补偿该模型在 sherpa-onnx 1.13
 真机回归（2026-10-19，PKG110）：输入 491520 样本 / 30.72 秒，处理 11.94 秒（RTF 0.389），与认可离线候选的波形相关系数 0.999923，相对 RMS 误差 0.01243，完整样本数一致。仅代表该样本和本次设备状态；长期录音的发热/耗电未据此验证。覆盖安装使用 adb install -r，保留现有数据和降噪开关/模型选择。
 
 声纹管理的“更新”直接打开录制弹窗，不再选择文件。用户显式开始后录制本人声音，建议 10–20 秒，满 5 秒可完成，30 秒自动结束并提交当前档案；补充样本而非覆盖已有样本。会议正在录音时禁止并行录制。取消、页面离开或应用进入后台停止录音并删除临时文件，交给 ViewModel 的录音在处理完成/失败/取消后清理。录音只在私有缓存中暂存，不创建会议或生成逐字稿/纪要。“添加”同样直接录制，先完成录音再填写姓名（1–80 字符），点击“保存声纹”后创建独立命名档案；不再打开文件选择器，也不自动合并到相似声纹。未填写姓名或取消不会创建档案。沿用单人、样本质量与档案容量检查，失败不改旧档案。SpeakerControlsTest 覆盖添加时先录制再命名的入口、更新入口和取消，不隐式启动麦克风测试。RecordedVoiceProfileTest 覆盖填写姓名后创建独立档案（相似声纹不覆盖已有身份）、姓名校验和临时录音清理。
+
+
+## Android local summaries
+
+When editing local-summary inference, downloads, settings or tests, read [docs/android-local-summary.md](docs/android-local-summary.md). LOCAL is a third summary provider; ASR selection is independent. Preserve existing provider defaults and credentials. Catalog revisions/hashes and no-thinking formats live in LocalSummaryModels.kt / LocalSummaryClient.kt. Native GGML symbols are isolated from Whisper; maintain that boundary when upgrading dependencies. JVM checks cannot substitute for opt-in native device tests. Model quality and memory/thermal claims require real-device evidence.

@@ -30,8 +30,13 @@ class SummaryOptionsTest {
             SummaryDetail.entries.forEach { detail ->
                 val prompt = buildSummaryPrompt("source", SummaryOptions(template, detail))
                 assertTrue(prompt.contains(template.defaultPrompt))
-                assertTrue(prompt.contains(detail.instruction))
-                assertTrue(prompt.contains("省略原文没有支持"))
+                if (template == MeetingTemplate.TRANSLATION) {
+                    assertTrue(prompt.contains("不省略或压缩对话"))
+                    assertFalse(prompt.contains(detail.instruction))
+                } else {
+                    assertTrue(prompt.contains(detail.instruction))
+                    assertTrue(prompt.contains("省略原文没有支持"))
+                }
             }
         }
     }

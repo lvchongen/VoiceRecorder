@@ -29,7 +29,7 @@ class TemplatePromptsUiTest {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("meeting_recorder", Context.MODE_PRIVATE).edit().clear().commit()
         val config = AppConfig(context)
-        val viewModel = SettingsViewModel(config, mock(), mock())
+        val viewModel = SettingsViewModel(config, mock(), mock(), mock())
         compose.mainClock.autoAdvance = false
         lateinit var focusManager: androidx.compose.ui.focus.FocusManager
         compose.setContent {
