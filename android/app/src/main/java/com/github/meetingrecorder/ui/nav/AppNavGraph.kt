@@ -16,6 +16,7 @@ fun AppNavGraph() {
     NavHost(navController = navController, startDestination = Routes.MAIN) {
         composable(Routes.MAIN) {
             MainScreen(
+                onMeetingClick = { navController.navigate(Routes.meetingDetail(it)) },
                 onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                 onNavigateToMeetings = { navController.navigate(Routes.MEETINGS) },
             )

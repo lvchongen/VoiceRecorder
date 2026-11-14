@@ -40,6 +40,7 @@ class MeetingDetailViewModel(
     private val config: Config,
     private val processor: MeetingProcessor,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val waveformReader: suspend (File, Int) -> List<Float> = ::readAudioWaveform,
 ) : ViewModel() {
 
     private val _transcript = MutableStateFlow<String?>(null)
@@ -105,7 +106,81 @@ class MeetingDetailViewModel(
     private val _totalTime = MutableStateFlow("00:00")
     val totalTime: StateFlow<String> = _totalTime.asStateFlow()
 
+    private val _positionMs = MutableStateFlow(0)
+    val positionMs = _positionMs.asStateFlow()
+    private val _durationMs = MutableStateFlow(0)
+    val durationMs = _durationMs.asStateFlow()
+    private val _waveform = MutableStateFlow<List<Float>>(emptyList())
+    val waveform = _waveform.asStateFlow()
+    private var waveformJob: Job? = null
+    private val waveformCache = mutableMapOf<String, List<Float>>()
+    private val _displayTitle = MutableStateFlow("会议录音")
+    val displayTitle = _displayTitle.asStateFlow()
+
+    private fun loadWaveform() {
+        waveformJob?.cancel()
+        _waveform.value = emptyList()
+        val file = if (_usingOriginal.value) meetingDir?.let { File(it, "recording.m4a") } else audioFile
+        file ?: return
+        val duration = _durationMs.value
+        val key = "${file.absolutePath}:${file.lastModified()}:${file.length()}"
+        waveformCache[key]?.let {
+            _waveform.value = it
+            return
+        }
+        waveformJob = viewModelScope.launch {
+            try {
+                val values = waveformReader(file, duration)
+                if (waveformCache.size >= 2) waveformCache.clear()
+                waveformCache[key] = values
+                _waveform.value = values
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Waveform is optional: decoding failure must not block playback or seeking.
+            }
+        }
+    }
+
+    private var seekPending = false
     private var playbackReady = false
+
+    private fun updatePosition(position: Int) {
+        _positionMs.value = position.coerceIn(0, _durationMs.value)
+        _currentTime.value = formatDuration(_positionMs.value.toLong())
+    }
+
+    private fun configurePlayback(player: MediaPlayer) {
+        _durationMs.value = player.duration.coerceAtLeast(0)
+        _totalTime.value = formatDuration(_durationMs.value.toLong())
+        loadWaveform()
+        player.setOnSeekCompleteListener {
+            if (mediaPlayer === it) {
+                seekPending = false
+                updatePosition(it.currentPosition)
+            }
+        }
+        player.setOnCompletionListener {
+            if (mediaPlayer === it) {
+                _isPlaying.value = false
+                timeUpdaterJob?.cancel()
+                updatePosition(_durationMs.value)
+            }
+        }
+    }
+
+    fun seekTo(position: Int) {
+        if (!playbackReady) return
+        val player = mediaPlayer ?: return
+        val target = position.coerceIn(0, _durationMs.value)
+        seekPending = true
+        updatePosition(target)
+        player.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
+    }
+
+    fun skipBy(deltaMs: Int) {
+        seekTo((_positionMs.value.toLong() + deltaMs).coerceIn(0L, _durationMs.value.toLong()).toInt())
+    }
 
     @Volatile private var mediaPlayer: MediaPlayer? = null
     private var timeUpdaterJob: Job? = null
@@ -134,13 +209,24 @@ class MeetingDetailViewModel(
         // Cancel any in-flight generation from a previously loaded meeting so its background
         // writes can't clobber the meeting we're loading now.
         generationJob?.cancel()
+        waveformJob?.cancel()
+        waveformCache.clear()
+        _waveform.value = emptyList()
+        _displayTitle.value = "会议录音"
         // Reset playback state from the previous meeting: without this, a meeting
         // that was playing leaves _isPlaying true and the timer running, so the
         // newly loaded meeting shows as "playing" on a player that never started.
         timeUpdaterJob?.cancel()
         timeUpdaterJob = null
         _isPlaying.value = false
-        _currentTime.value = "00:00"
+        updatePosition(0)
+        _durationMs.value = 0
+        _totalTime.value = "00:00"
+        seekPending = false
+        playbackReady = false
+        _hasAudio.value = false
+        mediaPlayer?.release()
+        mediaPlayer = null
         val dir = File(meetingPath)
         meetingDir = dir
         _preview.value = null
@@ -185,6 +271,7 @@ class MeetingDetailViewModel(
             _transcript.value = loaded.transcript
             _notes.value = loaded.notes
             currentTitle = loaded.title
+            _displayTitle.value = loaded.title?.takeIf { it.isNotBlank() } ?: "会议录音"
             durationSeconds = loaded.durationSeconds
 
             mediaPlayer?.release()
@@ -194,12 +281,7 @@ class MeetingDetailViewModel(
             _hasOriginal.value = loaded.hasOriginal
             _usingOriginal.value = false
             _audioWarning.value = loaded.warning
-            loaded.player?.setOnCompletionListener {
-                _isPlaying.value = false
-                _currentTime.value = "00:00"
-                timeUpdaterJob?.cancel()
-            }
-            _totalTime.value = loaded.player?.let { formatDuration(it.duration.toLong()) } ?: "00:00"
+            loaded.player?.let { configurePlayback(it) }
             _hasAudio.value = loaded.player != null
         }
     }
@@ -301,9 +383,14 @@ class MeetingDetailViewModel(
         if (!_hasOriginal.value || original == _usingOriginal.value) return
         val dir = meetingDir ?: return
         val file = if (original) File(dir, "recording.m4a") else audioFile ?: return
+        waveformJob?.cancel()
+        _waveform.value = emptyList()
         timeUpdaterJob?.cancel()
         _isPlaying.value = false
-        _currentTime.value = "00:00"
+        updatePosition(0)
+        _durationMs.value = 0
+        _totalTime.value = "00:00"
+        seekPending = false
         mediaPlayer?.release()
         mediaPlayer = null
         _usingOriginal.value = original
@@ -312,16 +399,15 @@ class MeetingDetailViewModel(
         try {
             player.setDataSource(file.absolutePath)
             player.setOnPreparedListener {
-                mediaPlayer = it
+                if (mediaPlayer !== it) return@setOnPreparedListener
                 playbackReady = true
-                _totalTime.value = formatDuration(it.duration.toLong())
-            }
-            player.setOnCompletionListener {
-                _isPlaying.value = false
-                _currentTime.value = "00:00"
-                timeUpdaterJob?.cancel()
+                configurePlayback(it)
             }
             player.setOnErrorListener { _, _, _ ->
+                playbackReady = false
+                _isPlaying.value = false
+                _durationMs.value = 0
+                timeUpdaterJob?.cancel()
                 _audioWarning.value = "音频播放失败，请重新打开会议"
                 true
             }
@@ -342,6 +428,7 @@ class MeetingDetailViewModel(
                 _isPlaying.value = false
                 timeUpdaterJob?.cancel()
             } else {
+                if (_positionMs.value >= _durationMs.value) seekTo(0)
                 it.start()
                 _isPlaying.value = true
                 startTimeUpdater()
@@ -353,24 +440,25 @@ class MeetingDetailViewModel(
         if (!playbackReady) return
         mediaPlayer?.let {
             it.pause()
-            it.seekTo(0)
+            seekTo(0)
             _isPlaying.value = false
-            _currentTime.value = "00:00"
+            updatePosition(0)
             timeUpdaterJob?.cancel()
         }
     }
 
     private fun startTimeUpdater() {
+        timeUpdaterJob?.cancel()
         timeUpdaterJob = viewModelScope.launch {
             while (_isPlaying.value) {
                 mediaPlayer?.let {
                     try {
-                        _currentTime.value = formatDuration(it.currentPosition.toLong())
+                        if (!seekPending) updatePosition(it.currentPosition)
                     } catch (e: IllegalStateException) {
                         // Player might have been released
                     }
                 }
-                delay(1000)
+                delay(250)
             }
         }
     }
@@ -386,6 +474,7 @@ class MeetingDetailViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        waveformJob?.cancel()
         mediaPlayer?.release()
         mediaPlayer = null
         timeUpdaterJob?.cancel()

@@ -576,3 +576,11 @@ DPDFNet8 固定采用 6 dB 抑制上限：先补偿该模型在 sherpa-onnx 1.13
 构建与测试边界见 [本地摘要开发说明](docs/android-local-summary.md)。
 
 Android transcription and summary services use dropdown selectors. Settings show provider-specific fields only inside the selected transcription or summary service. Switching providers preserves hidden credentials and model choices; Gemini settings share the same saved key/model across both stages.
+
+### Android 录音回放
+
+详情页按“音频 → 转写 → 总结”排列，默认打开音频。播放器提供拖动定位、当前时间与总时长、前后跳转 10 秒、播放/暂停及停止回到开头；超过一小时显示小时。可切换原始/降噪录音，切换音源会暂停并重置进度。没有音频的会议仍可查看转写和总结。
+
+### 银灰界面
+
+首页直接显示会议列表，支持标题/日期搜索及待转写、已总结筛选，底部保留录音和导入入口。深浅主题统一为银灰色。音频页显示实际音频波形、原始/降噪音源选择及已保存的转写/总结状态；波形解码失败不影响播放。波形在后台生成，仅缓存当前会议的两个音源，长音频需要等待解码。

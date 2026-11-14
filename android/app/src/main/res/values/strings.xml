@@ -10,9 +10,9 @@
     <string name="action_rename">Rename</string>
     <string name="action_discard">Discard</string>
     <string name="label_title">Title</string>
-    <string name="label_audio">Audio</string>
-    <string name="label_transcript">Transcript</string>
-    <string name="label_notes">Notes</string>
+    <string name="label_audio">音频</string>
+    <string name="label_transcript">转写</string>
+    <string name="label_notes">总结</string>
     <string name="placeholder_meeting_title">e.g. Standup, Design Review…</string>
 
     <!-- Main Screen -->
@@ -72,7 +72,7 @@
     <string name="hint_showing_default">当前为默认提示词，可编辑修改</string>
 
     <!-- Meeting Detail Screen -->
-    <string name="title_meeting_detail">Meeting Detail</string>
+    <string name="title_meeting_detail">会议详情</string>
     <string name="no_notes">No notes available</string>
     <string name="no_transcript">No transcript available</string>
     <string name="action_generate_transcript_notes">Generate transcript &amp; notes</string>

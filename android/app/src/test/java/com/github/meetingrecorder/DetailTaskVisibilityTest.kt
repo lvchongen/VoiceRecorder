@@ -3,6 +3,7 @@ package com.github.meetingrecorder
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.github.meetingrecorder.ui.detail.GenState
@@ -36,17 +37,26 @@ class DetailTaskVisibilityTest {
         whenever(vm.hasAudio).thenReturn(MutableStateFlow(true))
         whenever(vm.genState).thenReturn(MutableStateFlow(GenState.Processing("Qwen3-ASR 正在识别")))
         whenever(vm.isPlaying).thenReturn(MutableStateFlow(false))
+        whenever(vm.waveform).thenReturn(MutableStateFlow(emptyList()))
+        whenever(vm.displayTitle).thenReturn(MutableStateFlow("会议录音"))
+        whenever(vm.positionMs).thenReturn(MutableStateFlow(0))
+        whenever(vm.durationMs).thenReturn(MutableStateFlow(60_000))
         whenever(vm.currentTime).thenReturn(MutableStateFlow("00:00"))
         whenever(vm.totalTime).thenReturn(MutableStateFlow("01:00"))
         compose.setContent { MaterialTheme { MeetingDetailScreen("/fixture", {}, vm) } }
+        compose.onNodeWithText("音频").assertIsSelected()
+        val audioLeft = compose.onNodeWithText("音频").fetchSemanticsNode().boundsInRoot.left
+        val transcriptLeft = compose.onNodeWithText("转写").fetchSemanticsNode().boundsInRoot.left
+        val notesLeft = compose.onNodeWithText("总结").fetchSemanticsNode().boundsInRoot.left
+        org.junit.Assert.assertTrue(audioLeft < transcriptLeft && transcriptLeft < notesLeft)
         compose.onNodeWithText("Qwen3-ASR 正在识别").assertIsDisplayed()
-        compose.onNodeWithText("Audio").performClick()
+        compose.onNodeWithText("音频").performClick()
         compose.onNodeWithText("Qwen3-ASR 正在识别").assertIsDisplayed()
-        compose.onNodeWithText("Transcript").performClick()
+        compose.onNodeWithText("转写").performClick()
         compose.onNodeWithText("Qwen3-ASR 正在识别").assertIsDisplayed()
         compose.runOnIdle { transcript.value = "Saved transcript" }
         compose.onNodeWithText("Qwen3-ASR 正在识别").assertIsDisplayed()
-        compose.onNodeWithText("Notes").performClick()
+        compose.onNodeWithText("总结").performClick()
         compose.onNodeWithText("Qwen3-ASR 正在识别").assertIsDisplayed()
     }
 }

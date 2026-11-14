@@ -28,6 +28,7 @@ class SummaryControlsTest {
     @get:Rule val compose = RobolectricComposeRule()
 
     private fun fixture(preview: SummaryVersion? = null): MeetingDetailViewModel = mock<MeetingDetailViewModel>().also { vm ->
+        whenever(vm.displayTitle).thenReturn(MutableStateFlow("会议录音"))
         whenever(vm.defaultSummaryOptions).thenReturn(SummaryOptions())
         whenever(vm.preview).thenReturn(MutableStateFlow(preview))
         whenever(vm.versions).thenReturn(MutableStateFlow(emptyList()))
@@ -41,6 +42,8 @@ class SummaryControlsTest {
     fun `detail options send temporary template and detail without changing defaults`() {
         val vm = fixture()
         compose.setContent { MaterialTheme { MeetingDetailScreen("/fixture", {}, vm) } }
+        compose.onNodeWithText("此会议没有可播放的音频").assertIsDisplayed()
+        compose.onNodeWithText("总结").performClick()
         compose.onNodeWithText("Generate notes").performClick()
         compose.onNodeWithText("通用会议").performClick()
         compose.onNodeWithText("技术评审").performClick()

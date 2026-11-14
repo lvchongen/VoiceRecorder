@@ -72,6 +72,7 @@ fun MeetingDetailScreen(
 ) {
     LaunchedEffect(meetingPath) { viewModel.load(meetingPath) }
 
+    val displayTitle by viewModel.displayTitle.collectAsState()
     val transcript by viewModel.transcript.collectAsState()
     val notes by viewModel.notes.collectAsState()
     val hasAudio by viewModel.hasAudio.collectAsState()
@@ -170,7 +171,7 @@ fun MeetingDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.title_meeting_detail)) },
+                title = { Text(displayTitle, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -196,7 +197,7 @@ fun MeetingDetailScreen(
                                 viewModel.stop()
                                 showVoiceprints = true
                             })
-                            if (selectedTab == 0 && currentNotes != null) {
+                            if (selectedTab == 2 && currentNotes != null) {
                                 DropdownMenuItem(text = { Text("历史版本") }, onClick = {
                                     menuExpanded = false
                                     showHistory = true
@@ -219,20 +220,18 @@ fun MeetingDetailScreen(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text(stringResource(R.string.label_notes)) },
+                    text = { Text(stringResource(R.string.label_audio)) },
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     text = { Text(stringResource(R.string.label_transcript)) },
                 )
-                if (hasAudio) {
-                    Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        text = { Text(stringResource(R.string.label_audio)) },
-                    )
-                }
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text(stringResource(R.string.label_notes)) },
+                )
             }
 
             when (val state = genState) {
@@ -242,7 +241,7 @@ fun MeetingDetailScreen(
             }
             Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                 when (selectedTab) {
-                    0 -> NotesTabBody(
+                    2 -> NotesTabBody(
                         notes = currentNotes,
                         transcript = currentTranscript,
                         hasAudio = hasAudio,
@@ -269,7 +268,7 @@ fun MeetingDetailScreen(
                             showOptions = true
                         },
                     )
-                    2 -> AudioPlayer(viewModel)
+                    0 -> if (hasAudio) AudioPlayer(viewModel, onTranscript = { selectedTab = 1 }, onNotes = { selectedTab = 2 }) else Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) { Text("此会议没有可播放的音频") }
                 }
             }
         }
