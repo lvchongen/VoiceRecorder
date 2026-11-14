@@ -55,6 +55,7 @@ class MainViewModel(
 
     private var timerJob: Job? = null
     private var currentMeetingDir: File? = null
+    val savedMeetingPath: String? get() = currentMeetingDir?.absolutePath
     private var lockFile: File? = null
     private var currentTitle: String? = null
     private var durationSeconds: Int = 0
@@ -328,7 +329,7 @@ class MainViewModel(
         _state.value = RecordingState.Done(result.transcript, result.notes)
     }
 
-    fun saveResults() {
+    fun saveResults(onSaved: (String) -> Unit = {}) {
         val done = _state.value as? RecordingState.Done ?: return
         val meetingDir = currentMeetingDir ?: return
 
@@ -340,6 +341,7 @@ class MainViewModel(
                 lockFile = null
                 isInPlace = false
                 _state.value = RecordingState.Ready
+                onSaved(meetingDir.absolutePath)
             } catch (e: Exception) {
                 _state.value = RecordingState.Error("Save failed: ${e.message}")
             }

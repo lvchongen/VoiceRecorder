@@ -10,6 +10,7 @@ import com.github.meetingrecorder.data.ThemeMode
 import com.github.meetingrecorder.data.TranscriptionProvider
 import com.github.meetingrecorder.data.WhisperModel
 import com.github.meetingrecorder.data.WhisperModelStore
+import com.github.meetingrecorder.data.summaryOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +19,46 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 // Plain ViewModel — no Context needed; Config is constructor-injected via appViewModelFactory.
-class SettingsViewModel(private val config: Config, private val models: WhisperModelStore, private val qwenModels: QwenModelStore) : ViewModel() {
+class SettingsViewModel(private val config: Config, private val models: WhisperModelStore, private val qwenModels: QwenModelStore, private val localModels: com.github.meetingrecorder.data.LocalSummaryModelStore) : ViewModel() {
+
+    val localSummaryModel = MutableStateFlow(config.localSummaryModel)
+    val installedSummaryModels = MutableStateFlow(com.github.meetingrecorder.data.LocalSummaryModel.all.filter { localModels.installed(it) }.map { it.id }.toSet())
+    val summaryModelStatus = MutableStateFlow("")
+    val summaryModelBusy = MutableStateFlow(false)
+    private var summaryModelJob: Job? = null
+    fun setLocalSummaryModel(id: String) {
+        config.localSummaryModel = id
+        localSummaryModel.value = id
+    }
+    fun downloadSummaryModel(model: com.github.meetingrecorder.data.LocalSummaryModel) = summaryModelAction {
+        localModels.download(model) { summaryModelStatus.value = "${model.label}：$it%" }
+        summaryModelStatus.value = "${model.label} 下载完成，校验通过"
+    }
+    fun deleteSummaryModel(model: com.github.meetingrecorder.data.LocalSummaryModel) = summaryModelAction {
+        localModels.delete(model)
+        summaryModelStatus.value = "${model.label} 已删除"
+    }
+    fun cancelSummaryModelDownload() {
+        summaryModelJob?.cancel()
+    }
+    private fun summaryModelAction(action: suspend () -> Unit) {
+        if (summaryModelBusy.value) return
+        summaryModelBusy.value = true
+        summaryModelStatus.value = "准备中…"
+        summaryModelJob = viewModelScope.launch {
+            try {
+                action()
+            } catch (e: CancellationException) {
+                summaryModelStatus.value = "已取消"
+                throw e
+            } catch (e: Exception) {
+                summaryModelStatus.value = e.message ?: "模型操作失败"
+            } finally {
+                installedSummaryModels.value = com.github.meetingrecorder.data.LocalSummaryModel.all.filter { localModels.installed(it) }.map { it.id }.toSet()
+                summaryModelBusy.value = false
+            }
+        }
+    }
 
     val qwenInstalled = MutableStateFlow(qwenModels.installed())
     fun downloadQwen() = modelAction {
@@ -28,6 +68,12 @@ class SettingsViewModel(private val config: Config, private val models: WhisperM
     fun deleteQwen() = modelAction {
         qwenModels.delete()
         modelStatus.value = "Qwen3-ASR 已删除"
+    }
+
+    val denoiseModel = MutableStateFlow(config.denoiseModel)
+    fun setDenoiseModel(value: com.github.meetingrecorder.data.DenoiseModel) {
+        config.denoiseModel = value
+        denoiseModel.value = value
     }
 
     val recordingDenoiseEnabled = MutableStateFlow(config.recordingDenoiseEnabled)
@@ -107,6 +153,12 @@ class SettingsViewModel(private val config: Config, private val models: WhisperM
         _aliModel.value = value
     }
 
+    val summaryOptions get() = config.summaryOptions()
+    fun setSummaryOptions(value: com.github.meetingrecorder.data.SummaryOptions) {
+        config.summaryTemplate = value.template
+        config.summaryDetail = value.detail
+    }
+
     private val _summaryLanguage = MutableStateFlow(config.summaryLanguage)
     val summaryLanguage = _summaryLanguage.asStateFlow()
     fun setSummaryLanguage(value: String) {
@@ -180,6 +232,10 @@ class SettingsViewModel(private val config: Config, private val models: WhisperM
         _transcriptionPrompt.value = value
         config.transcriptionPrompt = value
     }
+
+    fun templatePrompt(template: com.github.meetingrecorder.data.MeetingTemplate) = config.templatePrompt(template)
+
+    fun setTemplatePrompt(template: com.github.meetingrecorder.data.MeetingTemplate, value: String) = config.setTemplatePrompt(template, value)
 
     fun setSummarizationPrompt(value: String) {
         _summarizationPrompt.value = value

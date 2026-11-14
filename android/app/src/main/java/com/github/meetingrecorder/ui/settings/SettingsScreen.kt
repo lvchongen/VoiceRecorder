@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -47,17 +48,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.meetingrecorder.R
 import com.github.meetingrecorder.appViewModelFactory
 import com.github.meetingrecorder.data.Config
+import com.github.meetingrecorder.data.DenoiseModel
 import com.github.meetingrecorder.data.QwenModelStore
 import com.github.meetingrecorder.data.SummaryProvider
 import com.github.meetingrecorder.data.ThemeMode
 import com.github.meetingrecorder.data.TranscriptionProvider
 import com.github.meetingrecorder.data.WhisperModel
+import com.github.meetingrecorder.speakers.VoiceprintPanel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,11 +95,13 @@ fun SettingsScreen(
                     onClick = { selectedTab = 1 },
                     text = { Text(stringResource(R.string.tab_prompts)) },
                 )
+                Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("声纹") })
             }
 
             when (selectedTab) {
                 0 -> GeneralTab(viewModel)
                 1 -> PromptsTab(viewModel)
+                2 -> VoiceprintPanel()
             }
         }
     }
@@ -112,15 +118,22 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
     val modelBusy by viewModel.modelBusy.collectAsState()
     val installedModels by viewModel.installedModels.collectAsState()
     val transcriptionProvider by viewModel.transcriptionProvider.collectAsState()
-    var transcriptionProviderDraft by remember { mutableStateOf(transcriptionProvider) }
+    var transcriptionProviderDraft by rememberSaveable { mutableStateOf(transcriptionProvider) }
+    var transcriptionMenuExpanded by remember { mutableStateOf(false) }
     val aliApiKey by viewModel.aliApiKey.collectAsState()
     var aliApiKeyDraft by remember { mutableStateOf(aliApiKey) }
     val aliBaseUrl by viewModel.aliBaseUrl.collectAsState()
     var aliBaseUrlDraft by remember { mutableStateOf(aliBaseUrl) }
     val aliModel by viewModel.aliModel.collectAsState()
     var aliModelDraft by remember { mutableStateOf(aliModel) }
+    var summaryOptionsDraft by remember { mutableStateOf(viewModel.summaryOptions) }
     val summaryLanguage by viewModel.summaryLanguage.collectAsState()
     var summaryLanguageDraft by remember { mutableStateOf(summaryLanguage) }
+    val localSummaryModel by viewModel.localSummaryModel.collectAsState()
+    var localSummaryDraft by rememberSaveable { mutableStateOf(localSummaryModel) }
+    val installedSummaryModels by viewModel.installedSummaryModels.collectAsState()
+    val summaryModelStatus by viewModel.summaryModelStatus.collectAsState()
+    val summaryModelBusy by viewModel.summaryModelBusy.collectAsState()
     val summaryProvider by viewModel.summaryProvider.collectAsState()
     val deepSeekApiKey by viewModel.deepSeekApiKey.collectAsState()
     val deepSeekModel by viewModel.deepSeekModel.collectAsState()
@@ -130,6 +143,9 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
     var providerMenuExpanded by remember { mutableStateOf(false) }
     val apiKey by viewModel.apiKey.collectAsState()
     val model by viewModel.model.collectAsState()
+    val denoiseModel by viewModel.denoiseModel.collectAsState()
+    var denoiseModelDraft by rememberSaveable { mutableStateOf(denoiseModel) }
+    var denoiseModelExpanded by remember { mutableStateOf(false) }
     val recordingDenoise by viewModel.recordingDenoiseEnabled.collectAsState()
     var recordingDenoiseDraft by rememberSaveable { mutableStateOf(recordingDenoise) }
     val audioQuality by viewModel.audioQuality.collectAsState()
@@ -139,7 +155,6 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
     var modelDraft by rememberSaveable { mutableStateOf(model) }
     var audioQualityDraft by rememberSaveable { mutableStateOf(audioQuality) }
     var dndDuringRecordingDraft by rememberSaveable { mutableStateOf(dndDuringRecordingEnabled) }
-    var modelMenuExpanded by remember { mutableStateOf(false) }
     var qualityMenuExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -165,10 +180,28 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
         }
         HorizontalDivider()
         Text("转写服务", style = MaterialTheme.typography.titleMedium)
-        TranscriptionProvider.entries.filter { it != TranscriptionProvider.QWEN }.forEach { provider ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = transcriptionProviderDraft == provider, onClick = { transcriptionProviderDraft = provider })
-                Text(provider.label)
+        ExposedDropdownMenuBox(
+            expanded = transcriptionMenuExpanded,
+            onExpandedChange = { transcriptionMenuExpanded = it },
+        ) {
+            OutlinedTextField(
+                value = transcriptionProviderDraft.label,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("转写服务") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = transcriptionMenuExpanded) },
+                modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+            )
+            ExposedDropdownMenu(expanded = transcriptionMenuExpanded, onDismissRequest = { transcriptionMenuExpanded = false }) {
+                TranscriptionProvider.entries.filter { it != TranscriptionProvider.QWEN }.forEach { provider ->
+                    DropdownMenuItem(
+                        text = { Text(provider.label) },
+                        onClick = {
+                            transcriptionProviderDraft = provider
+                            transcriptionMenuExpanded = false
+                        },
+                    )
+                }
             }
         }
         if (transcriptionProviderDraft == TranscriptionProvider.WHISPER) {
@@ -200,49 +233,12 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
             OutlinedTextField(value = aliBaseUrlDraft, onValueChange = { aliBaseUrlDraft = it }, label = { Text("阿里云接口地址") }, supportingText = { Text("北京默认 dashscope.aliyuncs.com；新加坡用 dashscope-intl.aliyuncs.com，保留 /compatible-mode/v1") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = aliModelDraft, onValueChange = { aliModelDraft = it }, label = { Text("转写模型") }, supportingText = { Text("默认 qwen3-asr-flash") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         }
-        Text("Gemini（仅选择 Gemini 转写或摘要时需要）", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(
-            value = apiKeyDraft,
-            onValueChange = { apiKeyDraft = it },
-            label = { Text(stringResource(R.string.label_gemini_api_key)) },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-
-        ExposedDropdownMenuBox(
-            expanded = modelMenuExpanded,
-            onExpandedChange = { modelMenuExpanded = it },
-        ) {
-            OutlinedTextField(
-                value = modelDraft,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text(stringResource(R.string.label_model)) },
-                trailingIcon = {
-                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuExpanded)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor(MenuAnchorType.PrimaryNotEditable),
-            )
-            ExposedDropdownMenu(
-                expanded = modelMenuExpanded,
-                onDismissRequest = { modelMenuExpanded = false },
-            ) {
-                viewModel.availableModels.forEach { m ->
-                    DropdownMenuItem(
-                        text = { Text(m) },
-                        onClick = {
-                            modelDraft = m
-                            modelMenuExpanded = false
-                        },
-                    )
-                }
-            }
+        if (transcriptionProviderDraft == TranscriptionProvider.GEMINI) {
+            GeminiSettings(apiKeyDraft, { apiKeyDraft = it }, modelDraft, { modelDraft = it }, viewModel.availableModels)
         }
 
         HorizontalDivider()
+        com.github.meetingrecorder.ui.detail.SummaryOptionsEditor(summaryOptionsDraft, { summaryOptionsDraft = it }, showLanguage = false)
         Text("摘要语言", style = MaterialTheme.typography.titleMedium)
         listOf("Bilingual" to "中英双语摘要", "Chinese" to "中文摘要", "Original" to "原语言摘要").forEach { (value, label) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -274,6 +270,27 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
                     )
                 }
             }
+        }
+        if (providerDraft == SummaryProvider.GEMINI) {
+            GeminiSettings(apiKeyDraft, { apiKeyDraft = it }, modelDraft, { modelDraft = it }, viewModel.availableModels)
+        }
+        if (providerDraft == SummaryProvider.LOCAL) {
+            com.github.meetingrecorder.data.LocalSummaryModel.all.forEach { localModel ->
+                Row(Modifier.fillMaxWidth().selectable(selected = localSummaryDraft == localModel.id, role = Role.RadioButton, onClick = { localSummaryDraft = localModel.id }), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = localSummaryDraft == localModel.id, onClick = null)
+                    Column(Modifier.weight(1f)) {
+                        Text(localModel.label)
+                        Text("Q4_K_M · ${localModel.sizeLabel}" + if (localModel.id in installedSummaryModels) " · 已下载" else "", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (localModel.id in installedSummaryModels) {
+                        TextButton(onClick = { viewModel.deleteSummaryModel(localModel) }, enabled = !summaryModelBusy) { Text("删除") }
+                    } else {
+                        TextButton(onClick = { viewModel.downloadSummaryModel(localModel) }, enabled = !summaryModelBusy) { Text("下载") }
+                    }
+                }
+            }
+            if (summaryModelStatus.isNotEmpty()) Text(summaryModelStatus, style = MaterialTheme.typography.bodySmall)
+            if (summaryModelBusy) TextButton(onClick = { viewModel.cancelSummaryModelDownload() }) { Text("取消下载") }
         }
         if (providerDraft == SummaryProvider.DEEPSEEK) {
             OutlinedTextField(
@@ -329,10 +346,31 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
         HorizontalDivider()
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("录音实时降噪（GTCRN）")
+                Text("录音实时降噪")
                 Text("同时保留原始录音和降噪录音", style = MaterialTheme.typography.bodySmall)
             }
             Switch(checked = recordingDenoiseDraft, onCheckedChange = { recordingDenoiseDraft = it })
+        }
+        if (recordingDenoiseDraft) {
+            ExposedDropdownMenuBox(expanded = denoiseModelExpanded, onExpandedChange = { denoiseModelExpanded = it }) {
+                OutlinedTextField(
+                    value = denoiseModelDraft.label,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("降噪方案") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(denoiseModelExpanded) },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                )
+                ExposedDropdownMenu(expanded = denoiseModelExpanded, onDismissRequest = { denoiseModelExpanded = false }) {
+                    DenoiseModel.entries.forEach { model ->
+                        DropdownMenuItem(text = { Text(model.label) }, onClick = {
+                            denoiseModelDraft = model
+                            denoiseModelExpanded = false
+                        })
+                    }
+                }
+            }
+            Text("DPDFNet8 在降噪时适度保留轻声和远处讲话。保存后对下一次录音生效。", style = MaterialTheme.typography.bodySmall)
         }
 
         Row(
@@ -366,14 +404,17 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
                 viewModel.setAliApiKey(aliApiKeyDraft.trim())
                 viewModel.setAliBaseUrl(aliBaseUrlDraft.trim())
                 viewModel.setAliModel(aliModelDraft.trim())
+                viewModel.setSummaryOptions(summaryOptionsDraft)
                 viewModel.setSummaryLanguage(summaryLanguageDraft)
                 viewModel.setSummaryProvider(providerDraft)
+                viewModel.setLocalSummaryModel(localSummaryDraft)
                 viewModel.setDeepSeekApiKey(deepSeekKeyDraft)
                 viewModel.setDeepSeekModel(deepSeekModelDraft)
                 viewModel.setApiKey(apiKeyDraft)
                 viewModel.setModel(modelDraft)
                 viewModel.setAudioQuality(audioQualityDraft)
                 viewModel.setRecordingDenoiseEnabled(recordingDenoiseDraft)
+                viewModel.setDenoiseModel(denoiseModelDraft)
                 viewModel.setDndDuringRecordingEnabled(dndDuringRecordingDraft)
             },
             modifier = Modifier.fillMaxWidth(),
@@ -384,7 +425,7 @@ private fun GeneralTab(viewModel: SettingsViewModel) {
 }
 
 @Composable
-private fun PromptsTab(viewModel: SettingsViewModel) {
+internal fun PromptsTab(viewModel: SettingsViewModel) {
     val transcriptionPrompt by viewModel.transcriptionPrompt.collectAsState()
     val summarizationPrompt by viewModel.summarizationPrompt.collectAsState()
     val titlePrompt by viewModel.titlePrompt.collectAsState()
@@ -392,9 +433,10 @@ private fun PromptsTab(viewModel: SettingsViewModel) {
     var transcriptionDraft by rememberSaveable {
         mutableStateOf(transcriptionPrompt.ifBlank { Config.DEFAULT_TRANSCRIPTION_PROMPT })
     }
-    var summarizationDraft by rememberSaveable {
-        mutableStateOf(summarizationPrompt.ifBlank { Config.DEFAULT_SUMMARIZATION_PROMPT })
-    }
+    var summarizationDraft by rememberSaveable { mutableStateOf(summarizationPrompt) }
+    var promptOptions by remember { mutableStateOf(viewModel.summaryOptions) }
+    val templateDrafts = remember { androidx.compose.runtime.mutableStateMapOf<com.github.meetingrecorder.data.MeetingTemplate, String>() }
+
     var titleDraft by rememberSaveable {
         mutableStateOf(titlePrompt.ifBlank { Config.DEFAULT_TITLE_PROMPT })
     }
@@ -406,17 +448,37 @@ private fun PromptsTab(viewModel: SettingsViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        Text("摘要提示词随会议模板切换。每个模板可单独修改；修改后点击底部保存。转写和标题提示词独立生效。")
+        com.github.meetingrecorder.ui.detail.SummaryOptionsEditor(
+            options = promptOptions,
+            onChange = {
+                promptOptions = it
+                viewModel.setSummaryOptions(it)
+            },
+            showLanguage = false,
+        )
+        val selectedTemplate = promptOptions.template
+        val templateDraft = templateDrafts[selectedTemplate] ?: viewModel.templatePrompt(selectedTemplate)
+        PromptField(
+            label = "${selectedTemplate.label} · 摘要提示词",
+            value = templateDraft,
+            onValueChange = { templateDrafts[selectedTemplate] = it },
+            isDefault = templateDraft == selectedTemplate.defaultPrompt,
+        )
+        TextButton(onClick = { templateDrafts[selectedTemplate] = selectedTemplate.defaultPrompt }) {
+            Text("恢复当前模板默认提示词")
+        }
+        PromptField(
+            label = "全局补充要求（可选）",
+            value = summarizationDraft,
+            onValueChange = { summarizationDraft = it },
+        )
+        Text("对所有模板生效，默认留空。旧版自定义摘要提示词保留在这里；可清空，避免与模板冲突。", style = MaterialTheme.typography.bodySmall)
         PromptField(
             label = stringResource(R.string.label_transcription_prompt),
             value = transcriptionDraft,
             onValueChange = { transcriptionDraft = it },
             isDefault = transcriptionDraft == Config.DEFAULT_TRANSCRIPTION_PROMPT,
-        )
-        PromptField(
-            label = stringResource(R.string.label_summarization_prompt),
-            value = summarizationDraft,
-            onValueChange = { summarizationDraft = it },
-            isDefault = summarizationDraft == Config.DEFAULT_SUMMARIZATION_PROMPT,
         )
         PromptField(
             label = stringResource(R.string.label_meeting_title_prompt),
@@ -431,9 +493,8 @@ private fun PromptsTab(viewModel: SettingsViewModel) {
                 viewModel.setTranscriptionPrompt(
                     if (transcriptionDraft == Config.DEFAULT_TRANSCRIPTION_PROMPT) "" else transcriptionDraft,
                 )
-                viewModel.setSummarizationPrompt(
-                    if (summarizationDraft == Config.DEFAULT_SUMMARIZATION_PROMPT) "" else summarizationDraft,
-                )
+                templateDrafts.forEach { (template, prompt) -> viewModel.setTemplatePrompt(template, prompt) }
+                viewModel.setSummarizationPrompt(summarizationDraft)
                 viewModel.setTitlePrompt(
                     if (titleDraft == Config.DEFAULT_TITLE_PROMPT) "" else titleDraft,
                 )
@@ -468,3 +529,55 @@ private fun PromptField(
 
 private fun Context.hasDndAccess(): Boolean =
     getSystemService(NotificationManager::class.java).isNotificationPolicyAccessGranted
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GeminiSettings(
+    apiKeyDraft: String,
+    onApiKeyChange: (String) -> Unit,
+    modelDraft: String,
+    onModelChange: (String) -> Unit,
+    availableModels: List<String>,
+) {
+    var modelMenuExpanded by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = apiKeyDraft,
+        onValueChange = onApiKeyChange,
+        label = { Text(stringResource(R.string.label_gemini_api_key)) },
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+    )
+
+    ExposedDropdownMenuBox(
+        expanded = modelMenuExpanded,
+        onExpandedChange = { modelMenuExpanded = it },
+    ) {
+        OutlinedTextField(
+            value = modelDraft,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(stringResource(R.string.label_model)) },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuExpanded)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(
+            expanded = modelMenuExpanded,
+            onDismissRequest = { modelMenuExpanded = false },
+        ) {
+            availableModels.forEach { m ->
+                DropdownMenuItem(
+                    text = { Text(m) },
+                    onClick = {
+                        onModelChange(m)
+                        modelMenuExpanded = false
+                    },
+                )
+            }
+        }
+    }
+}

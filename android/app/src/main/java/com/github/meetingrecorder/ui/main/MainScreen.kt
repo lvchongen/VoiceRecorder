@@ -64,6 +64,7 @@ import com.github.meetingrecorder.appViewModelFactory
 fun MainScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToMeetings: () -> Unit,
+    onMeetingClick: (String) -> Unit = {},
     viewModel: MainViewModel = viewModel(factory = appViewModelFactory),
 ) {
     val state by viewModel.state.collectAsState()
@@ -183,6 +184,17 @@ fun MainScreen(
                 TextButton(onClick = { showTitleDialog = false }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
+    }
+
+    if (state is RecordingState.Ready) {
+        com.github.meetingrecorder.ui.meetings.MeetingsScreen(
+            onBack = {},
+            onMeetingClick = onMeetingClick,
+            onRecord = { requestPermissionsAndRecord() },
+            onImport = { requestPermissionsAndPickFile() },
+            onSettings = onNavigateToSettings,
+        )
+        return
     }
 
     Scaffold(

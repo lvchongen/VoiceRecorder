@@ -16,6 +16,7 @@ fun AppNavGraph() {
     NavHost(navController = navController, startDestination = Routes.MAIN) {
         composable(Routes.MAIN) {
             MainScreen(
+                onMeetingClick = { navController.navigate(Routes.meetingDetail(it)) },
                 onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                 onNavigateToMeetings = { navController.navigate(Routes.MEETINGS) },
             )
@@ -30,6 +31,10 @@ fun AppNavGraph() {
                     navController.navigate(Routes.meetingDetail(absolutePath))
                 },
             )
+        }
+        composable(Routes.MEETING_SPEAKERS_PATTERN) { entry ->
+            val path = entry.arguments?.getString(Routes.MEETING_PATH_ARG)?.let(Routes::decodeMeetingPath).orEmpty()
+            MeetingDetailScreen(meetingPath = path, onBack = { navController.popBackStack() }, initialSpeakerTab = true)
         }
         composable(Routes.MEETING_DETAIL_PATTERN) { backStackEntry ->
             val path = backStackEntry.arguments

@@ -10,8 +10,9 @@ import android.media.audiofx.NoiseSuppressor
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.github.meetingrecorder.audio.AacPcmSink
-import com.github.meetingrecorder.audio.GtcrnDenoiser
+import com.github.meetingrecorder.audio.ModelDenoiser
 import com.github.meetingrecorder.data.AndroidAudioChunks
+import com.github.meetingrecorder.data.DenoiseModel
 import com.github.meetingrecorder.data.whisperSamples
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -68,7 +69,7 @@ class RealtimeDenoisingDeviceTest {
         var outputCount = 0L
         var maxFrameNs = 0L
         val start = System.nanoTime()
-        GtcrnDenoiser(context.assets).use { model ->
+        ModelDenoiser(context.assets, DenoiseModel.GTCRN).use { model ->
             repeat(rounds) {
                 for (offset in input.indices step 320) {
                     val frame = ShortArray(minOf(320, input.size - offset)) { (input[offset + it] * 32768f).toInt().coerceIn(-32768, 32767).toShort() }
@@ -94,7 +95,7 @@ class RealtimeDenoisingDeviceTest {
         val input = whisperSamples(instrumentation.context.assets.open("speech_with_noise.wav").use { it.readBytes() })
         val output = File(context.cacheDir, "denoise-device-test.m4a")
         try {
-            val model = GtcrnDenoiser(context.assets)
+            val model = ModelDenoiser(context.assets, DenoiseModel.GTCRN)
             var count = 0
             var changed = 0L
             val started = System.nanoTime()

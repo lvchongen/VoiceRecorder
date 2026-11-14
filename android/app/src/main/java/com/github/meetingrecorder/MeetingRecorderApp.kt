@@ -17,6 +17,7 @@ class MeetingRecorderApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.prepareSpeakerModels()
 
         // De-orphan recordings whose previous process died mid-recording or mid-processing, so
         // their audio reappears in the library. On Dispatchers.IO — it touches the filesystem.

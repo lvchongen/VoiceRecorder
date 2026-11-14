@@ -1,6 +1,8 @@
 package com.github.meetingrecorder.audio
 
 import android.content.res.AssetManager
+import com.github.meetingrecorder.data.DenoiseModel
+import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiserDpdfNetModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiserGtcrnModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiserModelConfig
 import com.k2fsa.sherpa.onnx.OnlineSpeechDenoiser
@@ -18,13 +20,23 @@ interface StreamingDenoiser : Closeable {
     fun flush(): ShortArray
 }
 
-class GtcrnDenoiser(assets: AssetManager) : StreamingDenoiser {
+class ModelDenoiser(assets: AssetManager, selected: DenoiseModel) : StreamingDenoiser {
+    private val engine: StreamingDenoiser = NativeStreamingDenoiser(assets, selected).let {
+        if (selected == DenoiseModel.DPDFNET8) SpeechPreservingDenoiser(it) else it
+    }
+    override fun process(samples: ShortArray) = engine.process(samples)
+    override fun flush() = engine.flush()
+    override fun close() = engine.close()
+}
+
+private class NativeStreamingDenoiser(assets: AssetManager, selected: DenoiseModel) : StreamingDenoiser {
     private val engine = OnlineSpeechDenoiser(
         assets,
         OnlineSpeechDenoiserConfig(
             model = OfflineSpeechDenoiserModelConfig(
-                gtcrn = OfflineSpeechDenoiserGtcrnModelConfig("denoise/gtcrn_simple.onnx"),
-                numThreads = 1,
+                gtcrn = OfflineSpeechDenoiserGtcrnModelConfig(if (selected == DenoiseModel.GTCRN) "denoise/gtcrn_simple.onnx" else ""),
+                dpdfnet = OfflineSpeechDenoiserDpdfNetModelConfig(if (selected == DenoiseModel.DPDFNET8) "denoise/dpdfnet8.onnx" else ""),
+                numThreads = if (selected == DenoiseModel.DPDFNET8) 4 else 1,
                 provider = "cpu",
             ),
         ),
@@ -59,7 +71,7 @@ class DenoisingBranch(
         private set
     var outputSamples = 0L
         private set
-    private val worker = Thread({ run() }, "gtcrn-denoise").apply { start() }
+    private val worker = Thread({ run() }, "speech-denoise").apply { start() }
 
     fun accept(samples: ShortArray) {
         check(!finished)

@@ -2,12 +2,15 @@ package com.github.meetingrecorder.data
 
 interface SummaryClient {
     suspend fun summarize(transcript: String, onStatus: (String) -> Unit = {}): String
+    suspend fun summarizeWithOptions(transcript: String, options: SummaryOptions, onStatus: (String) -> Unit = {}): String =
+        summarize(transcript, onStatus)
     suspend fun generateTitle(notes: String, onStatus: (String) -> Unit = {}): String
 }
 
 enum class SummaryProvider(val label: String) {
     GEMINI("Gemini"),
     DEEPSEEK("DeepSeek"),
+    LOCAL("本地模型"),
 }
 
 fun processingConfigurationError(
@@ -39,14 +42,22 @@ class SelectedSummaryClient(
     private val config: Config,
     private val gemini: SummaryClient,
     private val deepSeek: SummaryClient,
+    private val local: SummaryClient,
 ) : SummaryClient {
     private fun selected(): SummaryClient {
         config.processingError(needsTranscription = false)?.let { error(it) }
-        return if (config.summaryProvider == SummaryProvider.DEEPSEEK) deepSeek else gemini
+        return when (config.summaryProvider) {
+            SummaryProvider.GEMINI -> gemini
+            SummaryProvider.DEEPSEEK -> deepSeek
+            SummaryProvider.LOCAL -> local
+        }
     }
 
     override suspend fun summarize(transcript: String, onStatus: (String) -> Unit): String =
         selected().summarize(transcript, onStatus)
+
+    override suspend fun summarizeWithOptions(transcript: String, options: SummaryOptions, onStatus: (String) -> Unit): String =
+        selected().summarizeWithOptions(transcript, options, onStatus)
 
     override suspend fun generateTitle(notes: String, onStatus: (String) -> Unit): String =
         selected().generateTitle(notes, onStatus)

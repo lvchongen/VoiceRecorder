@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.github.meetingrecorder.speakers.SpeakerViewModel
 import com.github.meetingrecorder.ui.detail.MeetingDetailViewModel
 import com.github.meetingrecorder.ui.main.MainViewModel
 import com.github.meetingrecorder.ui.meetings.MeetingsViewModel
@@ -21,6 +22,10 @@ private val CreationExtras.meetingRecorderApp: MeetingRecorderApp
  */
 val appViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
     initializer {
+        val container = meetingRecorderApp.container
+        SpeakerViewModel(container.speakerService, container.speakerRepository, container.config)
+    }
+    initializer {
         val app = meetingRecorderApp
         MainViewModel(app, app.container.config, app.container.meetingRepository, app.container.meetingProcessor)
     }
@@ -33,6 +38,6 @@ val appViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         MeetingsViewModel(app, app.container.meetingRepository)
     }
     initializer {
-        SettingsViewModel(meetingRecorderApp.container.config, meetingRecorderApp.container.whisperModels, meetingRecorderApp.container.qwenModels)
+        SettingsViewModel(meetingRecorderApp.container.config, meetingRecorderApp.container.whisperModels, meetingRecorderApp.container.qwenModels, meetingRecorderApp.container.localSummaryModels)
     }
 }

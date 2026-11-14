@@ -47,4 +47,9 @@ class RoutesTest {
     fun `encoding a path without slashes is identity`() {
         assertEquals("14-30_Standup", Routes.encodeMeetingPath("14-30_Standup"))
     }
+
+    @Test
+    fun `speaker naming route reuses the safe meeting path encoder`() {
+        assertEquals("meeting_speakers/${Routes.encodeMeetingPath(meetingPath)}", Routes.meetingSpeakers(meetingPath))
+    }
 }

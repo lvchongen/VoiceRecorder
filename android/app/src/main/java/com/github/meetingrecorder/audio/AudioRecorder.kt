@@ -6,6 +6,7 @@ import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
+import com.github.meetingrecorder.data.DenoiseModel
 import java.io.File
 
 class AudioRecorder(private val context: Context) {
@@ -34,13 +35,13 @@ class AudioRecorder(private val context: Context) {
         }
     }
 
-    fun start(outputDir: File, bitrate: Int = 64_000, denoise: Boolean = false, onInterrupted: (() -> Unit)? = null): File {
+    fun start(outputDir: File, bitrate: Int = 64_000, denoise: Boolean = false, denoiseModel: DenoiseModel = DenoiseModel.DPDFNET8, onInterrupted: (() -> Unit)? = null): File {
         stop()
         wasInterrupted = false
         this.onInterrupted = onInterrupted
         if (denoise) {
             val streaming = RealtimeRecorder(context)
-            val file = streaming.start(outputDir, bitrate) { markInterrupted() }
+            val file = streaming.start(outputDir, bitrate, denoiseModel) { markInterrupted() }
             realtime = streaming
             return file
         }
